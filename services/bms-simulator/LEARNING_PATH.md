@@ -10,7 +10,8 @@ Link note: if a link is broken, search for the page title.
 
 **Read:** the official Python Tutorial (https://docs.python.org/3/tutorial), sections 3 to 9: numbers and strings, lists and dicts, functions, modules, classes.
 
-**Also learn:** `venv` + `pip`, `dataclasses`, the `random` and `math` modules, `json.dumps`, `time.sleep`.
+**Also learn:** `venv` + `pip`, `dataclasses`, the `random` and `math` modules, `json.dumps`, `
+`.
 
 **Exercise:** write a script that prints a dict as JSON once per second, 5 times.
 
