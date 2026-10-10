@@ -1,0 +1,49 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./infra/mosquito/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/broker/uptime' -C 1 -W 3 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  bms-simulator:
+    build: ./services/bms-simulator
+    restart: unless-stopped
+    environment:
+      MQTT_HOST: ${MQTT_HOST:-mosquitto}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      DEVICE_ID: ${DEVICE_ID:-haske-bms-001}
+      PUBLISH_INTERVAL_S: ${PUBLISH_INTERVAL_S:-5}
+      SPEED: ${SPEED:-60}
+      SCENARIO: ${SCENARIO:-normal}
+    ports:
+      - "8000:8000"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+    volumes:
+      - ./infra/homeassistant/config:/config
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+
+volumes:
+  mosquitto-data:
