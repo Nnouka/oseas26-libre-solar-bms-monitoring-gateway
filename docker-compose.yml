@@ -34,6 +34,27 @@ services:
       timeout: 5s
       retries: 5
 
+  bms-bridge:
+    build: ./services/bms-bridge
+    restart: unless-stopped
+    environment:
+      MQTT_HOST: ${MQTT_HOST:-mosquitto}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      SUMMARY_INTERVAL_S: ${SUMMARY_INTERVAL_S:-30}
+      # Must equal the simulator SPEED so cycle counting matches simulated time.
+      # With a REAL BMS, set TIME_SCALE=1 and SUMMARY_INTERVAL_S=900.
+      TIME_SCALE: ${SPEED:-60}
+    ports:
+      - "8001:8001"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     restart: unless-stopped
