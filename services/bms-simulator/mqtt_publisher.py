@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
 
-from discovery import discovery_messages          # added in Part 8
+from ha_discovery import discovery_messages          # added in Part 8
 from mpm import MpmFilter                         # added in 7.6
 from schema import Info, Meas
 from sim import Simulator
