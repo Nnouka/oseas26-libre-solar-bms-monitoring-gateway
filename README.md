@@ -19,6 +19,49 @@ An open, deployable remote monitoring gateway that reads live data from the Libr
 Solar BMS, publishes it to a standard MQTT layer, and makes it visible in the
 tools operators and the community already use.
 
+## Team Haske solution
+
+A working gateway built on the schema in [`docs/mqtt-schema.md`](docs/mqtt-schema.md). It currently runs against a BMS simulator; real-hardware transport is the next step.
+
+```
+BMS simulator -> Mosquitto (MQTT) -> bms-bridge -+-> Home Assistant (full stream, auto-discovery)
+                                                 +-> mpm-ingestor -> MicroPowerManager (Battery Health page)
+```
+
+| Service | What it does | Host port |
+|---------|--------------|-----------|
+| `mosquitto` | MQTT broker (the single hub) | 1883 |
+| `bms-simulator` | Publishes realistic BMS data; scenarios `normal`, `cell_drift`, `overheat` | 8010 |
+| `bms-bridge` | Derives health score, state of health and fault events; publishes `summary` and `event` topics; Home Assistant discovery | 8011 |
+| `homeassistant` | Receives the full stream as auto-discovered entities | 8123 |
+| `mpm-ingestor` | Sends low-frequency summaries and fault events to MPM (persistent MQTT session, on-disk outbox with retry) | 8012 |
+
+MicroPowerManager only receives the low-frequency summary and fault events, shown as a **Battery Health** page (list plus detail page with a fault log and recommended actions). Home Assistant gets the full stream.
+
+### Quick start (simulator, Home Assistant)
+
+Requires Docker.
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+```
+
+- Home Assistant: http://localhost:8123 (the BMS device appears automatically).
+- Trigger a fault: `curl -X POST http://localhost:8010/scenario/overheat`, then `curl -X POST http://localhost:8010/scenario/normal` to reset.
+
+### Add MicroPowerManager
+
+MPM runs separately and gets our plugin through an overlay. Follow [`integrations/micropowermanager/README.md`](integrations/micropowermanager/README.md) (includes the Windows workarounds), then set `MPM_API_KEY` in `.env`. Never commit the real key.
+
+### Status
+
+- Done: schema, simulator, bridge, Home Assistant integration, MPM ingestion and Battery Health page.
+- Next: SMS alerts through MPM, a real BMS over WiFi (path A1), Prospect adapter, persisting the cycle count across restarts.
+- Known limits: state of health is a simple cycle-model estimate; the broker is anonymous (demo only).
+
+---
+
 ## Abstract and goal
 
 The Libre Solar BMS is a capable open-source battery management system, but once

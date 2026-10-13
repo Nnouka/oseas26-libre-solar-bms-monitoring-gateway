@@ -4,3 +4,8 @@
 **__pycache__**
 __pycache__
 **/__pycache__/
+
+# Home Assistant generated state (keep only the readme)
+infra/homeassistant/config/*
+!infra/homeassistant/config/readme.md
+.env
