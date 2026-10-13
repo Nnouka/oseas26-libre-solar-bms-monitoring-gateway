@@ -1,0 +1,35 @@
+{
+  "sNominalCapacity_Ah": 50.0,
+  "sShortCircuitLimit_A": 80.0,
+  "sShortCircuitDelay_us": 195,
+  "sDisOvercurrent_A": 52.0,
+  "sDisOvercurrentDelay_ms": 320,
+  "sChgOvercurrent_A": 52.0,
+  "sChgOvercurrentDelay_ms": 320,
+  "sDisMaxTemp_degC": 45.0,
+  "sDisMinTemp_degC": -20.0,
+  "sChgMaxTemp_degC": 45.0,
+  "sChgMinTemp_degC": 0.0,
+  "sTempLimitHysteresis_degC": 5.0,
+  "sCellOvervoltage_V": 3.8,
+  "sCellOvervoltageReset_V": 3.4,
+  "sCellOvervoltageDelay_ms": 1999,
+  "sCellUndervoltage_V": 2.5,
+  "sCellUndervoltageReset_V": 3.1,
+  "sCellUndervoltageDelay_ms": 1999,
+  "sBalTargetVoltageDiff_V": 0.01,
+  "sBalMinVoltage_V": 3.3,
+  "sBalIdleDelay_s": 1800,
+  "sBalIdleCurrent_A": 0.1,
+  "xPresetNMC": ["fCapacity_Ah"],
+  "xPresetLFP": ["fCapacity_Ah"],
+  "xPresetLTO": ["fCapacity_Ah"],
+  "sOcvPoints_V": [
+    3.392, 3.314, 3.309, 3.308, 3.304, 3.296, 3.283, 3.275, 3.271, 3.268, 3.265,
+    3.264, 3.262, 3.252, 3.24, 3.226, 3.213, 3.19, 3.177, 3.132, 2.833
+  ],
+  "sSocPoints_pct": [
+    100.0, 95.0, 90.0, 85.0, 80.0, 75.0, 70.0, 65.0, 60.0, 55.0, 50.0, 45.0,
+    40.0, 35.0, 30.0, 25.0, 20.0, 15.0, 10.0, 5.0, 0.0
+  ]
+}

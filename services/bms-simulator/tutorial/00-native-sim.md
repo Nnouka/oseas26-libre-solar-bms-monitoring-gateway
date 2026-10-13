@@ -29,9 +29,9 @@ Fill this in from your own terminal, not from the document. Writing it down is t
 
 | # | Question | Where to look | Your answer |
 | --- | --- | --- | --- |
-| 1 | What are the 14 items in `#mLive`, in order? | the captured line | |
-| 2 | How many decimals does each use? | the captured line | |
-| 3 | What does the firmware print for a value that is "not a number"? | `rCellAvgVoltage_V` | |
+| 1 | What are the 14 items in `#mLive`, in order? | the captured line | rPackVoltage_V, rStackVoltage_V, rPackCurrent_A, rCellTemps_degC, rICTemp_degC, rMOSFETTemp_degC, rSOC_pct, rErrorFlags, rBmsState, rCellVoltages_V, rCellAvgVoltage_V, rCellMinVoltage_V, rCellMaxVoltage_V, rBalancingStatus|
+| 2 | How many decimals does each use? | the captured line | 1 |
+| 3 | What does the firmware print for a value that is "not a number"? | `rCellAvgVoltage_V` | `null` |
 | 4 | What do `rBmsState` 0, 1, 2, 3 mean? | firmware-findings.md | |
 | 5 | Which `Conf` value says how long the pack must be idle before balancing starts? | `?Conf` | |
 | 6 | What is the over-voltage trip level, and at which voltage does it clear? | `?Conf` | |

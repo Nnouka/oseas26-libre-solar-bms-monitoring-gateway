@@ -1,0 +1,26 @@
+{
+  "Device": null,
+  "Conf": null,
+  "Meas": null,
+  "Input": null,
+  "pNodeID": "9C232EA9CABFB9A2",
+  "pNodeName": "Libre Solar BMS",
+  "Networking": null,
+  "_Reporting": null,
+  "mLive": [
+    "Meas/rPackVoltage_V",
+    "Meas/rStackVoltage_V",
+    "Meas/rPackCurrent_A",
+    "Meas/rCellTemps_degC",
+    "Meas/rICTemp_degC",
+    "Meas/rMOSFETTemp_degC",
+    "Meas/rSOC_pct",
+    "Meas/rErrorFlags",
+    "Meas/rBmsState",
+    "Meas/rCellVoltages_V",
+    "Meas/rCellAvgVoltage_V",
+    "Meas/rCellMinVoltage_V",
+    "Meas/rCellMaxVoltage_V",
+    "Meas/rBalancingStatus"
+  ]
+}
