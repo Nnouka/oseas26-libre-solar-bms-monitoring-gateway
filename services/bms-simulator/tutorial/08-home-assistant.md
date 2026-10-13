@@ -265,7 +265,7 @@ Put the sensors on a dashboard: open the device, click an entity, look at the hi
 
 ## Checkpoint
 
-- `uv run pytest -q` is green: `55 passed`.
+- `uv run pytest -q` is green: `61 passed`.
 - HA shows the device with 20 entities and live numbers, and handles availability as in 8.5.
 
 ## Commit

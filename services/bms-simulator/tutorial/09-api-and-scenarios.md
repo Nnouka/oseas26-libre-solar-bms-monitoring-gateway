@@ -210,7 +210,7 @@ async def set_scenario(name: str):
 
 </details>
 
-Run the tests: `uv run pytest tests/test_api.py -q` should say `4 passed`. Then the whole suite: `uv run pytest -q`, `58 passed`. The last API test reloads the app with `MQTT_ENABLED=false` and checks that the simulator still runs and serves `/live`.
+Run the tests: `uv run pytest tests/test_api.py -q` should say `4 passed`. Then the whole suite: `uv run pytest -q`, `64 passed`. The last API test reloads the app with `MQTT_ENABLED=false` and checks that the simulator still runs and serves `/live`.
 
 ### 9.3 Run the service
 
@@ -296,7 +296,7 @@ The ambient cools over about thirty simulated minutes, the flags clear only when
 
 ## Checkpoint
 
-- `uv run pytest -q` shows `58 passed`.
+- `uv run pytest -q` shows `64 passed`.
 - The service runs, `/health` is ok, and you can trigger `overheat` and see the effect in `mosquitto_sub` (the `errors` list fills) and, if you ran Part 8, in Home Assistant.
 
 ## Commit

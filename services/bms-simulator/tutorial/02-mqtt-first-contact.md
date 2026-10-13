@@ -14,7 +14,7 @@
 - **Client id.** Must be unique per connected client. If a second client connects with the same id, the broker kicks the first one out.
 - **The paho loop.** paho-mqtt does its network work in a loop. `loop_start()` runs it in a background thread, so your program stays free.
 
-Reading (15 minutes, optional): [MQTT essentials, parts 1 to 5](https://www.hivemq.com/mqtt/mqtt-essentials/).
+Reading (15 minutes, optional): [MQTT essentials, parts 1 to 5](https://www.hivemq.com/mqtt/).
 
 ## Steps
 

@@ -38,7 +38,7 @@ Questions to ask the case giver (Joscha) before spending time on production-spec
 2. Is the UART contract for the Cicada relay (path A2) the existing `#mLive` ThingSet statement with CRC, or a new framed format?
 3. Which BMS firmware revision will be on the shared real BMS, and is its UART enabled with the default 115200 baud?
 4. Does the shared real BMS have cells connected, and how many?
-5. Is a retained-message `status` plus last will acceptable for MPM's "last seen", or does MPM need a heartbeat event?
+5. Is a retained-message `status` plus last will acceptable for MPM's "last seen", or does MPM need a heartbeat event? (`bms/<id>/mpm` already sends a `heartbeat` every 300 s by default: is that the right interval?)
 
 ## 12.2 What is real, modelled or invented
 

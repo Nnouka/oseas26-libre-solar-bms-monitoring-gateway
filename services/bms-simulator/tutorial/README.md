@@ -21,6 +21,8 @@ Only build what the production system can use **without major changes**. Concret
 3. **Home Assistant discovery lives in the gateway**, not in the device, so it works for any source.
 4. **Fields consumers want but the firmware does not have** (state of health, cycle count, imbalance, health score) are derived downstream (in the gateway or the MPM ingestor) from the stream. They are never invented by the simulator.
 
+5. **Two topics, two audiences.** `bms/<id>/meas` is the full measurement at a high rate, for Home Assistant. `bms/<id>/mpm` is a compact summary published only when something is worth a decision (state or fault change, imbalance across its limit, a real SoC move) plus a slow heartbeat, for MPM. Same device, same gateway, two subscribers who each get what they need ([Part 7.6](07-publisher.md)).
+
 The part of the tutorial where the simulator publishes MQTT directly (Parts 7 and 8) teaches the publisher and discovery code that the gateway then reuses (Part 10). In the final stack the simulator runs with `MQTT_ENABLED=false`.
 
 ## What you are building, and why it looks the way it does

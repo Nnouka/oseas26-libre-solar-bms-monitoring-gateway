@@ -15,7 +15,10 @@ battery. This is the code that makes the gateway see your simulator.
 | --- | --- | --- | --- | --- |
 | `bms/<id>/status` | `online` / `offline` | yes | 1 | A newcomer must learn at once whether the device is up. `offline` is the last will. |
 | `bms/<id>/info` | static device facts and limits | yes | 1 | Rarely changes; every new subscriber should get it immediately. |
-| `bms/<id>/meas` | the measurement, every few seconds | no | 0 | The next one replaces it in seconds. A retained old reading would look current when it is not. |
+| `bms/<id>/meas` | the full measurement, every few seconds. **Home Assistant** reads this | no | 0 | The next one replaces it in seconds. A retained old reading would look current when it is not. |
+| `bms/<id>/mpm` | a compact summary, only when something is worth a decision (7.6). **MPM** reads this | no | 1 | MPM acts on decisions, not on a stream. QoS 1 because a missed fault event is *not* replaced seconds later. |
+
+**Two topics, two audiences.** Home Assistant draws graphs, so it wants the full picture often (set `PUBLISH_INTERVAL_S=1` if you like). MPM makes decisions (schedule a service, flag a battery), so it wants a short message when the state of the battery changes, plus a slow heartbeat, not every second of the stream. The device never decides who is interested: it publishes both, each consumer subscribes to its own topic.
 
 **One class, two threads.** paho runs the network in a background thread (`loop_start`). You add your own thread that steps the battery and publishes on a timer. Both
 use the same client. paho's `publish()` is thread-safe.
@@ -154,11 +157,13 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
 
 from discovery import discovery_messages          # added in Part 8
+from mpm import MpmFilter                         # added in 7.6
 from schema import Info, Meas
 from sim import Simulator
 
@@ -168,12 +173,13 @@ SCHEMA_VERSION = 1
 
 class Publisher:
     def __init__(self, model: Simulator, host: str, port: int, device_id: str,
-                 interval_s: float, speed: float):
+                 interval_s: float, speed: float, mpm: MpmFilter | None = None):
         self.model = model
         self.host, self.port = host, port
         self.device_id = device_id
         self.interval_s, self.speed = interval_s, speed
         self.base = f"bms/{device_id}"       # every topic of this device starts with this
+        self.mpm = mpm or MpmFilter()        # added in 7.6: decides what is worth telling MPM
 
         self.connected = False
         self.published = 0
@@ -247,6 +253,12 @@ class Publisher:
         # Validate before publishing: a bug in the model must never reach the broker.
         return Meas.model_validate(self.meas_dict()).model_dump_json(by_alias=True)
 
+    def _publish_mpm(self) -> None:
+        # Added in 7.6. Looks at every sample, publishes only the decision-worthy ones.
+        event = self.mpm.check(self.meas_dict(), time.monotonic())
+        if event:
+            self.client.publish(f"{self.base}/mpm", json.dumps(event), qos=1)
+
     # ------------------------------------------------------------- main loop
     def _loop(self) -> None:
         while not self._stop.is_set():
@@ -255,6 +267,7 @@ class Publisher:
             if self.connected:
                 self.client.publish(f"{self.base}/meas", self._meas_json(), qos=0)
                 self.published += 1
+                self._publish_mpm()                # added in 7.6
             self._stop.wait(self.interval_s)   # like sleep(), but wakes up at once on stop()
 ```
 
@@ -316,9 +329,177 @@ These are the experiments that prove the design. Do all four and write what you 
 
 </details>
 
+### 7.6 A second topic for MPM
+
+`meas` is right for Home Assistant and wrong for MPM: it is a stream, and a decision system drowns in streams. So the publisher gets a second, much quieter topic, `bms/<id>/mpm`. A small class, `MpmFilter`, sees **every** measurement and lets through only these moments:
+
+| `reason` | When |
+| --- | --- |
+| `first` | the first measurement after start (so MPM learns the starting point) |
+| `state_change` | `OFF`, `CHG`, `DIS`, `NORMAL` or `SHUTDOWN` changed |
+| `errors_changed` | a fault appeared or cleared |
+| `imbalance_high` / `imbalance_ok` | the spread between the highest and lowest cell crossed 50 mV, in either direction |
+| `soc_step` | the charge moved 5 points away from what MPM last heard |
+| `heartbeat` | nothing else happened for 300 s: proof of life, and MPM's "last seen" |
+
+The payload is a summary (state, SoC, voltage, current, `imbalance_mv`, `max_temp_c`, `errors`), without the per-cell arrays. `imbalance_mv` and `max_temp_c` are plain arithmetic on fields the firmware already reports. Nothing is invented (see the production-parity rules in the README).
+
+The filter has no MQTT and no clock inside (you pass `now`), which is why it is easy to test. Write `tests/test_mpm.py` first:
+
+```python
+"""The MPM filter: pure logic, no broker, no clock (we pass `now` ourselves)."""
+from mpm import MpmEvent, MpmFilter
+
+
+def meas(**kw) -> dict:
+    base = {"schema": 1, "device_id": "dev1", "ts": "2026-10-13T08:30:00Z", "state": "NORMAL",
+            "pack_voltage_v": 26.1, "pack_current_a": 3.0, "soc_pct": 60.0,
+            "cell_voltages_v": [3.27, 3.27, 3.28, 3.27], "cell_temps_c": [25.0, 26.0],
+            "mosfet_temp_c": 27.0, "balancing_mask": 0, "errors": []}
+    return {**base, **kw}
+
+
+def test_first_measurement_is_sent_then_a_steady_stream_is_silent():
+    f = MpmFilter()
+    assert f.check(meas(), 0)["reason"] == "first"
+    assert [f.check(meas(), t) for t in range(1, 60)] == [None] * 59
+
+
+def test_a_fault_appearing_or_clearing_is_sent():
+    f = MpmFilter()
+    f.check(meas(), 0)
+    assert f.check(meas(errors=["CHG_OVERTEMP"]), 1)["reason"] == "errors_changed"
+    assert f.check(meas(errors=["CHG_OVERTEMP"]), 2) is None          # same fault: nothing new
+    assert f.check(meas(errors=[]), 3)["reason"] == "errors_changed"
+
+
+def test_state_change_and_soc_step():
+    f = MpmFilter(soc_step_pct=5.0)
+    f.check(meas(), 0)
+    assert f.check(meas(soc_pct=63.0), 1) is None                     # small drift is not a decision
+    assert f.check(meas(soc_pct=65.5), 2)["reason"] == "soc_step"     # 5.5 away from the 60 MPM heard
+    assert f.check(meas(soc_pct=65.5, state="CHG"), 3)["reason"] == "state_change"
+
+
+def test_imbalance_is_sent_when_it_crosses_the_limit_in_either_direction():
+    f = MpmFilter(imbalance_mv=50.0)
+    f.check(meas(), 0)
+    bad = meas(cell_voltages_v=[3.20, 3.27, 3.28, 3.27])              # 80 mV spread
+    assert f.check(bad, 1)["reason"] == "imbalance_high"
+    assert f.check(bad, 2) is None
+    assert f.check(meas(), 3)["reason"] == "imbalance_ok"
+
+
+def test_heartbeat_when_nothing_else_happens():
+    f = MpmFilter(heartbeat_s=300.0)
+    f.check(meas(), 0)
+    assert f.check(meas(), 299) is None
+    assert f.check(meas(), 300)["reason"] == "heartbeat"
+    assert f.check(meas(), 301) is None                               # the timer restarted
+
+
+def test_the_event_is_compact_and_valid():
+    event = MpmFilter().check(meas(errors=["CHG_OVERTEMP"]), 0)
+    MpmEvent.model_validate(event)
+    assert event["imbalance_mv"] == 10.0 and event["max_temp_c"] == 27.0
+    assert "cell_voltages_v" not in event and "cell_temps_c" not in event
+```
+
+Then `mpm.py`. The thresholds are constructor arguments with the defaults above.
+
+<details>
+<summary>Solution: mpm.py</summary>
+
+```python
+"""Decision-worthy summaries for MPM (topic bms/<id>/mpm). No MQTT in here: pure logic, easy to test."""
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from schema import ErrorName
+
+SCHEMA_VERSION = 1
+Reason = Literal["first", "state_change", "errors_changed", "imbalance_high", "imbalance_ok",
+                 "soc_step", "heartbeat"]
+
+
+class MpmEvent(BaseModel):
+    """Payload of bms/<id>/mpm. Small on purpose: no per-cell arrays."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    schema_version: Literal[1] = Field(alias="schema")
+    device_id: str
+    ts: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+    reason: Reason
+    state: Literal["OFF", "CHG", "DIS", "NORMAL", "SHUTDOWN"]
+    soc_pct: float = Field(ge=0, le=100)
+    pack_voltage_v: float
+    pack_current_a: float
+    imbalance_mv: float
+    max_temp_c: float
+    errors: list[ErrorName]
+
+
+class MpmFilter:
+    """Looks at EVERY measurement, lets through only the ones worth a decision."""
+
+    def __init__(self, soc_step_pct: float = 5.0, imbalance_mv: float = 50.0, heartbeat_s: float = 300.0):
+        self.soc_step_pct, self.imbalance_mv, self.heartbeat_s = soc_step_pct, imbalance_mv, heartbeat_s
+        self._last: dict | None = None      # what MPM was last told
+        self._last_at = 0.0
+
+    def check(self, meas: dict, now: float) -> dict | None:
+        """Return the event to publish (a dict that obeys MpmEvent), or None. `now` is a monotonic clock."""
+        v = meas["cell_voltages_v"]
+        imbalance = round((max(v) - min(v)) * 1000.0, 1)
+        errors = sorted(meas["errors"])
+        high = imbalance >= self.imbalance_mv
+        last = self._last
+
+        if last is None:
+            reason = "first"
+        elif meas["state"] != last["state"]:
+            reason = "state_change"
+        elif errors != last["errors"]:
+            reason = "errors_changed"
+        elif high != last["high"]:
+            reason = "imbalance_high" if high else "imbalance_ok"
+        elif abs(meas["soc_pct"] - last["soc_pct"]) >= self.soc_step_pct:
+            reason = "soc_step"            # measured against what MPM last heard, so no flapping at a boundary
+        elif now - self._last_at >= self.heartbeat_s:
+            reason = "heartbeat"           # proof of life, and MPM's "last seen"
+        else:
+            return None
+
+        self._last = {"state": meas["state"], "errors": errors, "high": high, "soc_pct": meas["soc_pct"]}
+        self._last_at = now
+        event = MpmEvent(
+            schema=SCHEMA_VERSION, device_id=meas["device_id"], ts=meas["ts"], reason=reason,
+            state=meas["state"], soc_pct=meas["soc_pct"], pack_voltage_v=meas["pack_voltage_v"],
+            pack_current_a=meas["pack_current_a"], imbalance_mv=imbalance,
+            max_temp_c=max([*meas["cell_temps_c"], meas["mosfet_temp_c"]]), errors=errors,
+        )
+        return event.model_dump(by_alias=True)
+```
+
+</details>
+
+The wiring is already in the publisher solution above (the lines marked "7.6"): after each `meas`, `_publish_mpm()` asks the filter and publishes to `bms/<id>/mpm` with QoS 1, **not retained** (an old event must not look current; the retained `status` already tells a newcomer whether the device is up).
+
+Run `uv run pytest tests/test_mpm.py -q`; expect `6 passed`. Then watch both topics side by side:
+
+```bash
+docker exec -it mosq mosquitto_sub -t "bms/+/meas" -t "bms/+/mpm" -v
+```
+
+With `dev_publish.py` you see a `meas` every second and, after the first `mpm`, silence. Trigger something (`POST /scenario/overheat` once Part 9 exists) and an `mpm` message with `"reason":"errors_changed"` appears within one sample.
+
 ## Checkpoint
 
-- `uv run pytest -q` is green: `53 passed`.
+- `uv run pytest -q` is green: `59 passed`.
 - `mosquitto_sub` shows status, info and meas, and the four experiments behave as described.
 
 ## Commit
@@ -333,6 +514,7 @@ git commit -m "feat(bms-simulator): MQTT publisher with LWT, retained status/inf
 1. Why is `meas` not retained but `status` is?
 2. What would happen to a subscriber that connects at 12:00 if `meas` were retained and the simulator had died at 09:00?
 3. Why `connect_async` and not `connect`?
+4. Why is `mpm` QoS 1 but `meas` QoS 0, and why are neither retained?
 
 <details>
 <summary>Answers</summary>
@@ -340,6 +522,7 @@ git commit -m "feat(bms-simulator): MQTT publisher with LWT, retained status/inf
 1. A reading is replaced seconds later, so an old retained one would only mislead. Status is a state that stays true until it changes, and a newcomer needs it at once.
 2. It would receive a 09:00 reading that looks current. Retained data has no expiry unless the consumer adds one.
 3. `connect` raises an error if the broker is down at startup. `connect_async` returns at once and lets the background loop keep trying, so start order does not matter.
+4. A lost `meas` is replaced a second later; a lost fault event is not, so `mpm` gets the stronger guarantee. Neither is retained because both are events about a moment, and a late subscriber must not mistake an old one for the present.
 
 </details>
 

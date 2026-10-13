@@ -47,8 +47,8 @@ mkdir services/wifi-sim
 cd services/wifi-sim
 ```
 
-Copy `pyproject.toml` from `services/bms-simulator`, change the name to `wifi-sim`, and add `"pyserial>=3.5"` to the dependencies (the library for real serial ports), then `uv sync` (this creates its own `uv.lock`). Copy these files unchanged from `services/bms-simulator`: `thingset.py`, `schema.py`, `discovery.py`, `tests/conftest.py`, `tests/test_thingset.py`, `tests/test_discovery.py`.
-In `test_discovery.py` the test file does not need the simulator, so check there is no import of `sim` or `publisher`; run `uv run pytest -q`, which should give `6 passed`.
+Copy `pyproject.toml` from `services/bms-simulator`, change the name to `wifi-sim`, and add `"pyserial>=3.5"` to the dependencies (the library for real serial ports), then `uv sync` (this creates its own `uv.lock`). Copy these files unchanged from `services/bms-simulator`: `thingset.py`, `schema.py`, `discovery.py`, `mpm.py` (Part 7.6), `tests/conftest.py`, `tests/test_thingset.py`, `tests/test_discovery.py`, `tests/test_mpm.py`.
+In `test_discovery.py` the test file does not need the simulator, so check there is no import of `sim` or `publisher`; run `uv run pytest -q`, which should give `12 passed`.
 
 ### 10.2 Tests first
 
@@ -119,7 +119,20 @@ def test_publishes_to_the_meas_topic_when_connected():
     r.client.publish = lambda topic, *a, **k: sent.append(topic)   # no network in a unit test
     r._announce = lambda: None
     assert r.handle(encode_live(GOOD)) is True
-    assert sent == ["bms/dev1/meas"]
+    assert sent == ["bms/dev1/mpm", "bms/dev1/meas"]       # the first sample also goes to MPM
+
+
+def test_mpm_hears_about_changes_not_about_every_line():
+    r = relay(min_interval_s=100.0)
+    r.connected = True
+    sent = []
+    r.client.publish = lambda topic, *a, **k: sent.append(topic)
+    r._announce = lambda: None
+    for _ in range(3):
+        r.handle(encode_live(GOOD))
+    assert sent.count("bms/dev1/mpm") == 1                  # "first"; nothing changed after that
+    r.handle(encode_live({**GOOD, "rErrorFlags": 0}))       # the fault clears
+    assert sent.count("bms/dev1/mpm") == 2
 
 
 def test_publishing_is_rate_limited():
@@ -286,7 +299,7 @@ It resembles the Part 7 publisher, with the same lifecycle (`start`, `stop`), la
 
 - `process_line(line)`: strip; ignore anything not starting with `#mLive`; count it; `decode_live` (a CRC failure raises `ValueError`, count `bad_crc`); `to_mqtt` (`NoCells`: count `no_cells`); add `schema`, `device_id`, `ts`; validate with `Meas` (count `invalid`). Return the dict or `None`.
   Note the `except` order: `NoCells` is a kind of `ValueError`, so it must be caught **first**.
-- `handle(line)`: call `process_line`; learn `cell_count` from the first good line (the stream does not tell you; and announce `info` and discovery then); publish only if connected, WiFi is up, and `min_interval_s` has passed since the last publish.
+- `handle(line)`: call `process_line`; learn `cell_count` from the first good line (the stream does not tell you; and announce `info` and discovery then); if connected and WiFi is up, hand the message to the MPM filter (**every** valid line, so a fault is never missed because of rate limiting) and publish it to `bms/<id>/mpm` if the filter says so, then publish `meas` for Home Assistant only if `min_interval_s` has passed since the last `meas`.
 - `set_wifi(up)`: `up=False`: publish `offline`, `disconnect()`, `loop_stop()`. `up=True`: `connect_async()` and `loop_start()` again. (After a deliberate disconnect paho's thread has ended, and a plain `reconnect()` does nothing. We found that out by trying it.)
 - `_loop`: `for line in self.lines: self.handle(line)`.
 - Because the stream has no `info`, `ASSUMED_LIMITS` carries the LFP defaults. They are labelled as assumed in the code.
@@ -309,6 +322,7 @@ import paho.mqtt.client as mqtt
 
 from discovery import discovery_messages
 from mapping import NoCells, to_mqtt
+from mpm import MpmFilter
 from schema import Info, Meas
 from thingset import decode_live
 
@@ -325,11 +339,12 @@ ASSUMED_LIMITS = {
 class Relay:
     def __init__(self, lines: Iterator[str], host: str, port: int, device_id: str,
                  min_interval_s: float = 5.0, capacity_ah: float = 50.0,
-                 clock: Callable[[], float] = time.monotonic):
+                 clock: Callable[[], float] = time.monotonic, mpm: MpmFilter | None = None):
         self.lines, self.host, self.port = lines, host, port
         self.device_id, self.base = device_id, f"bms/{device_id}"
         self.min_interval_s, self.capacity_ah, self.clock = min_interval_s, capacity_ah, clock
-        self.stats = {"lines": 0, "bad_crc": 0, "no_cells": 0, "invalid": 0, "published": 0}
+        self.mpm = mpm or MpmFilter()      # which samples are worth telling MPM
+        self.stats = {"lines": 0, "bad_crc": 0, "no_cells": 0, "invalid": 0, "published": 0, "mpm_published": 0}
         self.last_error = ""
         self.wifi_up = True            # the simulated radio; see set_wifi()
         self.connected = False
@@ -432,7 +447,15 @@ class Relay:
             if self.connected:
                 self._announce()
         now = self.clock()
-        if not (self.connected and self.wifi_up) or now - self._last_pub < self.min_interval_s:
+        if not (self.connected and self.wifi_up):
+            return False
+        # MPM: judged on EVERY valid line (the 1 Hz stream), published only when it is worth a decision.
+        event = self.mpm.check(full, now)
+        if event:
+            self.client.publish(f"{self.base}/mpm", json.dumps(event), qos=1)
+            self.stats["mpm_published"] += 1
+        # Home Assistant: the full measurement, rate limited by min_interval_s.
+        if now - self._last_pub < self.min_interval_s:
             return False
         self._last_pub = now
         self.client.publish(f"{self.base}/meas", json.dumps(full), qos=0)
@@ -542,7 +565,7 @@ def test_serial_source_reads_lines_from_a_port():
     assert got[1] == NATIVE_SIM_LINE
 ```
 
-Run `uv run pytest -q`, expecting `17 passed`.
+Run `uv run pytest -q`, expecting `24 passed`.
 
 ### 10.7 First run: simulator through the gateway
 
@@ -562,7 +585,7 @@ curl localhost:8002/stats
 docker exec -it mosq mosquitto_sub -t "bms/haske-bms-001/#" -v
 ```
 
-You should see `status online`, `info`, then one `meas` per interval, and `/stats` with `bad_crc` 0, `no_cells` 0 and a growing `published`. In Home Assistant the device appears with its 20 entities (if you ran Part 8), published by the gateway. The *simulator* published nothing. Check `curl localhost:8000/health`: `"mqtt_enabled": false`.
+You should see `status online`, `info`, then one `meas` per interval and, on `bms/<id>/mpm`, one `first` message followed by silence until something changes (try `POST /scenario/overheat` on the simulator), and `/stats` with `bad_crc` 0, `no_cells` 0 and a growing `published`. In Home Assistant the device appears with its 20 entities (if you ran Part 8), published by the gateway. The *simulator* published nothing. Check `curl localhost:8000/health`: `"mqtt_enabled": false`.
 
 Now two experiments:
 
@@ -617,7 +640,7 @@ If `/stats` shows `bad_crc` growing, the baud rate or the wiring is wrong. If `n
 
 ## Checkpoint
 
-- `uv run pytest -q` in `services/wifi-sim` shows `17 passed`.
+- `uv run pytest -q` in `services/wifi-sim` shows `24 passed`.
 - The simulator's data arrives in MQTT through the gateway, and the radio on/off experiment works.
 - You ran the gateway against the real `native_sim` and can explain why it published nothing.
 

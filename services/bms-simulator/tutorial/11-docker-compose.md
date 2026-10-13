@@ -203,7 +203,7 @@ a service be optional, for example `profiles: ["ha"]` on `homeassistant`, starte
 
 ## Checkpoint
 
-- `docker compose up --build` brings the stack up, all services are healthy, and `mosquitto_sub -t "bms/#"` shows `status`, `info` and `meas` for `haske-bms-001`, all published by the gateway, while `curl localhost:8001/health` says `"mqtt_enabled": false`.
+- `docker compose up --build` brings the stack up, all services are healthy, and `mosquitto_sub -t "bms/#"` shows `status`, `info`, `meas` (and `mpm` on changes and heartbeats) for `haske-bms-001`, all published by the gateway, while `curl localhost:8001/health` says `"mqtt_enabled": false`.
 - Another team member can clone the repository and do the same with no steps beyond `docker compose up --build`. (Ask one to try. Their problems are bugs in your instructions.)
 
 ## Commit
