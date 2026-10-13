@@ -52,7 +52,7 @@ Write this table into `services/bms-simulator/readme.md`. A reviewer must be abl
 | SoC estimator (OCV at boot, coulomb counting in 0.1 % steps) | **Real algorithm** | the battery it observes is modelled |
 | Cell voltages, current, temperatures | **Modelled** | simplified LFP physics |
 | `CELL_FAILURE` rule | **Approximation** | the real chip decides this differently |
-| `cell_drift` and `overheat` scenarios | **Invented** | demonstration stories, not safety tests |
+| `cell_drift`, `overheat` and `cloudy` scenarios | **Invented** | demonstration stories, not safety tests |
 | Cell count on the real stream | **Assumed** | counted from non-zero channels, to be verified on a real pack |
 
 ## 12.3 Review your own work

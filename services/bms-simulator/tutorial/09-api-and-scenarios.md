@@ -1,7 +1,7 @@
 # Part 9: API and scenarios
 
 **Goal.** Turn the pieces into a service: a FastAPI app that starts the publisher at startup, stops it cleanly at shutdown, answers `/health`, shows the live `#mLive` line and the internal state, and
-lets you trigger scenarios (`cell_drift`, `overheat`) while it runs. This is `main.py`.
+lets you trigger scenarios (`cell_drift`, `overheat`, `cloudy`) while it runs. This is `main.py`.
 
 **Time.** 1.5 hours.
 
@@ -18,7 +18,7 @@ lets you trigger scenarios (`cell_drift`, `overheat`) while it runs. This is `ma
 | `DEVICE_ID` | `haske-bms-001` | used in every topic |
 | `PUBLISH_INTERVAL_S` | `5` | real seconds between `meas` messages |
 | `SPEED` | `60` | simulated seconds per real second |
-| `SCENARIO` | `normal` | `normal`, `cell_drift` or `overheat` |
+| `SCENARIO` | `normal` | `normal`, `cell_drift`, `overheat` or `cloudy` |
 | `MQTT_ENABLED` | `true` | `false`: no MQTT at all. The simulator behaves like the BMS alone (serial line on `/live`) and the gateway of Part 10 does the publishing |
 
 **Two modes.** With `MQTT_ENABLED=true` (the default while you learn) the `Publisher` of Part 7 both steps the battery and publishes. With `MQTT_ENABLED=false` a tiny `SimRunner` only steps the battery on the same timer, and the simulator is purely "the BMS". Production parity (see the README): in the final stack the gateway is the only publisher.

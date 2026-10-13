@@ -38,9 +38,10 @@ dT = (P_heat - k * (T - T_ambient)) * dt / C_thermal
 ```
 
 **6. The current profile.** A solar charger and a load decide the battery current, not the battery. A sine of sunlight from 06:00 to 18:00 charges, a
-constant night load and an evening peak discharge. When the pack is full the charger *tapers* and the battery current falls to zero.
+constant night load and an evening peak discharge. When the pack is full the charger *tapers* and the battery current falls to zero. The sun is not always out: a `cloudy`
+scenario lets the panel deliver only a quarter of its clear-sky current, so you can see how the pack copes with a gloomy spell.
 
-**7. The switches.** The BMS has two MOSFET switches. If the charge switch is open no charging current can flow, and likewise for discharge. The battery model takes the switch states
+**7. The switches.** The BMS has two logical switches, charge and discharge. On the real C1 board each is built from MOSFETs in a back-to-back pair, with 4 such pairs in parallel to carry the current. The simulator models them as just two on/off inputs. If the charge switch is open no charging current can flow, and likewise for discharge. The battery model takes the switch states
 as inputs. They come from the firmware in Part 5. This is the loop that closes in Part 6.
 
 **8. Time steps.** A simulation advances in steps of `dt`. Too large and it becomes inaccurate, so the next part limits one step to 30 simulated seconds.
@@ -211,7 +212,7 @@ A `dataclass` writes `__init__` for you from the field list. `ChipReading.empty(
 """The physical battery on its own: no firmware involved."""
 import pytest
 
-from physical_battery import SCENARIOS, Battery, ocv
+from physical_battery import SCENARIOS, TAPER_BAND, Battery, ocv
 from chip import MAX_CELLS
 
 
@@ -295,7 +296,7 @@ def test_bleeding_lowers_one_cell_only():
 
 
 def test_scenarios_are_known_and_unknown_ones_rejected():
-    assert SCENARIOS == ("normal", "cell_drift", "overheat")
+    assert SCENARIOS == ("normal", "cell_drift", "overheat", "cloudy")
     with pytest.raises(ValueError):
         Battery().set_scenario("bogus")
 
@@ -314,6 +315,36 @@ def test_cell_drift_pulls_one_cell_down():
     for _ in range(300):
         b.step(60, False, False, 0)
     assert b.soc[2] < min(b.soc[k] for k in range(8) if k != 2) - 0.1
+
+
+def test_cloudy_midday_current_is_much_lower_than_clear_sky():
+    clear, cloudy = Battery(seed=1, start_hour=12.0), Battery(seed=1, start_hour=12.0)
+    cloudy.set_scenario("cloudy")
+    clear.step(60, True, True, 0)
+    cloudy.step(60, True, True, 0)
+    assert 0.0 < cloudy.current_a < 0.4 * clear.current_a
+
+
+def test_a_cloudy_day_does_not_fill_the_pack():
+    clear, cloudy = Battery(seed=1, start_hour=6.0), Battery(seed=1, start_hour=6.0)
+    cloudy.set_scenario("cloudy")
+    clear_peak = cloudy_peak = 0.0
+    for _ in range(72):                                # 06:00 to 18:00 in 10-minute steps
+        clear.step(600, True, True, 0)
+        cloudy.step(600, True, True, 0)
+        clear_peak = max(clear_peak, max(clear.soc))
+        cloudy_peak = max(cloudy_peak, max(cloudy.soc))
+    assert clear_peak > 0.99                           # the sunny pack fills up...
+    assert cloudy_peak < 1.0 - TAPER_BAND              # ...the cloudy one never even reaches the taper zone
+    assert sum(cloudy.soc) < sum(clear.soc)
+
+
+def test_leaving_the_cloudy_scenario_brings_the_sun_back():
+    b = Battery(seed=1, start_hour=12.0)
+    b.set_scenario("cloudy")
+    assert b.cloud < 1.0
+    b.set_scenario("normal")
+    assert b.cloud == 1.0
 ```
 
 Read the test names. They are a complete specification of the physical model. Notice how they use the *switch* arguments and `bleed_mask`, which you meet next.
@@ -335,7 +366,7 @@ import random
 from chemistry import OCV_V, SOC_PCT, interp
 from chip import MAX_CELLS, ChipReading
 
-SCENARIOS = ("normal", "cell_drift", "overheat")
+SCENARIOS = ("normal", "cell_drift", "overheat", "cloudy")
 
 _SOC_EXT = [-0.05] + [p / 100.0 for p in SOC_PCT]     # 0..1 instead of percent, plus one point below 0
 _OCV_EXT = [2.0] + OCV_V
@@ -355,6 +386,7 @@ DRIFT_LEAK_A = 2.0
 DRIFT_R_GROWTH_OHM_PER_H = 0.0005
 OVERHEAT_RATE_C_PER_MIN = 0.25     # overheat: the surroundings heat up
 OVERHEAT_MAX_AMBIENT_C = 60.0
+CLOUD_FACTOR = 0.25                # cloudy: the panel delivers 25 % of its clear-sky current
 
 
 def ocv(soc: float) -> float:
@@ -372,7 +404,7 @@ Test: `uv run pytest tests/test_battery.py -q -k ocv`.
 - `self.cap`: per-cell **true** capacity: `nominal_ah * true_capacity_factor * rng.uniform(0.985, 1.015)`.
 - `self.r_base`: per-cell resistance `0.0010 * rng.uniform(0.9, 1.1)` ohm, and `self.r` a *copy* of it (scenarios modify `r`, `r_base` lets you undo).
 - `self.soc`: per-cell true charge, `rng.uniform(0.55, 0.60)`.
-- `sim_s` (simulated seconds since midnight: `start_hour * 3600`), `temp_c = 29.0`, `ambient_c`, `current_a = 0.0`, `scenario = "normal"`, `scenario_s = 0.0`.
+- `sim_s` (simulated seconds since midnight: `start_hour * 3600`), `temp_c = 29.0`, `ambient_c`, `current_a = 0.0`, `scenario = "normal"`, `scenario_s = 0.0`, `cloud = 1.0` (the share of clear-sky solar: 1.0 is a clear sky).
 
 Use list comprehensions: `[expr for _ in range(cells)]`. The order of the `rng` calls matters for identical numbers
 (first `cap`, then `r_base`, then `soc`). If yours differ from the expected output later, that is the reason, and it is harmless.
@@ -391,7 +423,7 @@ Use list comprehensions: `[expr for _ in range(cells)]`. The order of the `rng` 
 
 `wanted_current`: with `h = hour_of_day()` and `c = nominal_ah`,
 
-- `solar = PEAK_SOLAR_C * c * sin(pi * (h - 6) / 12)` for `6 <= h <= 18`, else 0. The sine goes from 0 at 06:00 up to 1 at noon and back to 0 at 18:00.
+- `solar = self.cloud * PEAK_SOLAR_C * c * sin(pi * (h - 6) / 12)` for `6 <= h <= 18`, else 0. The sine goes from 0 at 06:00 up to 1 at noon and back to 0 at 18:00. `self.cloud` is 1.0 on a clear day; step D explains the cloudy scenario.
 - `evening = EVENING_LOAD_C * c * exp(-((h - 19) ** 2) / (2 * 1.5 ** 2))`. A bell curve (Gaussian) centred on 19:00, 1.5 h wide.
 - return `solar - (BASE_LOAD_C * c + evening) + rng.gauss(0.0, 0.004 * c)`. The last term is sensor-like noise of 0.2 A.
 
@@ -401,7 +433,7 @@ balancing logic in Part 5 needs that.
 **Step D: scenarios.**
 
 ```python
-    def set_scenario(self, name: str) -> None:       # validate, reset scenario_s, restore self.r from r_base
+    def set_scenario(self, name: str) -> None:       # validate, reset scenario_s, restore self.r from r_base, set self.cloud
     def _apply_scenario(self, dt: float) -> None:    # called each step
 ```
 
@@ -409,6 +441,11 @@ balancing logic in Part 5 needs that.
 (`r_base + DRIFT_R_GROWTH_OHM_PER_H * hours`) and its charge leaks away (`soc -= DRIFT_LEAK_A * dt / (cap * 3600)`, never below `-0.05`). For
 `overheat`: the ambient temperature rises `OVERHEAT_RATE_C_PER_MIN` per minute of scenario time up to `OVERHEAT_MAX_AMBIENT_C`. In every other scenario the ambient
 relaxes back to `NORMAL_AMBIENT_C` (move a fraction `min(1, dt / 1800)` of the way each step).
+
+`cloudy` needs no code in `_apply_scenario`. Instead `set_scenario` sets `self.cloud` to `CLOUD_FACTOR` when the name is `"cloudy"` and to `1.0` for every other name, and
+`wanted_current` multiplies the solar term by it. Clouds only shrink the sun; the night load is unchanged. For the default 50 Ah pack a clear day brings about 115 Ah of solar
+against roughly 39 Ah of load. A cloudy day brings about 29 Ah, so the pack loses roughly 22 % of its charge every day. Because solar and load are both C-rates, this
+holds whatever `nominal_ah` you configure: in this model a bigger battery does not ride out more cloudy days.
 
 **Step E: `step()` and `read_chip()`.** This is the heart. `step(dt, chg_on, dis_on, bleed_mask)` does, in order:
 
@@ -430,7 +467,7 @@ Bit tests: `bleed_mask >> k & 1` is 1 when bit `k` is set. Run all battery tests
 uv run pytest tests/test_battery.py -q
 ```
 
-Expected: `13 passed`.
+Expected: `16 passed`.
 
 <details>
 <summary>Solution: physical_battery.py (compare after your tests pass)</summary>
@@ -449,7 +486,7 @@ import random
 from chemistry import OCV_V, SOC_PCT, interp
 from chip import MAX_CELLS, ChipReading
 
-SCENARIOS = ("normal", "cell_drift", "overheat")
+SCENARIOS = ("normal", "cell_drift", "overheat", "cloudy")
 
 # OCV of one cell as a function of true charge (0..1).  Same shape as the firmware's table, but
 # sorted by increasing charge, and extended a little BELOW 0 % where a real LFP cell collapses.
@@ -471,6 +508,7 @@ DRIFT_LEAK_A = 2.0
 DRIFT_R_GROWTH_OHM_PER_H = 0.0005
 OVERHEAT_RATE_C_PER_MIN = 0.25     # overheat: the surroundings heat up
 OVERHEAT_MAX_AMBIENT_C = 60.0
+CLOUD_FACTOR = 0.25                # cloudy: the panel delivers 25 % of its clear-sky current
 
 
 def ocv(soc: float) -> float:
@@ -496,6 +534,7 @@ class Battery:
         self.current_a = 0.0
         self.scenario = "normal"
         self.scenario_s = 0.0
+        self.cloud = 1.0               # share of clear-sky solar that reaches the panel (1.0 = clear sky)
 
     # ------------------------------------------------------------------ helpers
     def hour_of_day(self) -> float:
@@ -505,7 +544,8 @@ class Battery:
         """Solar charge minus load.  + = charging."""
         h = self.hour_of_day()
         c = self.nominal_ah            # loads scale with the battery: C-rates, not amps
-        solar = PEAK_SOLAR_C * c * math.sin(math.pi * (h - 6.0) / 12.0) if 6.0 <= h <= 18.0 else 0.0
+        solar = (self.cloud * PEAK_SOLAR_C * c * math.sin(math.pi * (h - 6.0) / 12.0)
+                 if 6.0 <= h <= 18.0 else 0.0)
         evening = EVENING_LOAD_C * c * math.exp(-((h - 19.0) ** 2) / (2 * 1.5 ** 2))
         return solar - (BASE_LOAD_C * c + evening) + self.rng.gauss(0.0, 0.004 * c)
 
@@ -517,6 +557,7 @@ class Battery:
             raise ValueError(f"unknown scenario {name!r}; choose from {SCENARIOS}")
         self.scenario, self.scenario_s = name, 0.0
         self.r = list(self.r_base)
+        self.cloud = CLOUD_FACTOR if name == "cloudy" else 1.0
 
     def _apply_scenario(self, dt: float) -> None:
         self.scenario_s += dt
@@ -622,6 +663,7 @@ Check the *shape*, not the digits:
 1. Change `start_hour` to 0 and `seed` to 2. Does the daily shape stay the same? Which numbers change?
 2. Set `true_capacity_factor=1.0`. Compare the charge in the last line (midnight, after the whole day) with before. What changed, and why?
 3. Add a line printing the **imbalance** (`cell_max - cell_min`) in millivolts. At which hour is it largest, and why is the middle of the OCV curve a bad place to read it?
+4. Right after creating the battery in `dev_battery.py`, call `b.set_scenario("cloudy")` and run it again. Does the pack still reach about 98 % at midday? How low is the charge at midnight? Then let the loop run for four days instead of two: what happens?
 
 <details>
 <summary>Hints</summary>
@@ -629,12 +671,13 @@ Check the *shape*, not the digits:
 1. The sunshine hours and the load times are the same, so the shape is. Initial charge, resistances and noise change.
 2. It ends higher (about 59.9 % instead of 58.1 %). Bigger cells lose a smaller percentage to the same night load. The firmware's estimate in Part 5 will also be more accurate, because its idea of the capacity (50 Ah) is then right.
 3. When the fullest cell is at the steep end of the curve, a small difference in charge means a big difference in voltage. In the flat middle a large charge difference is only a few millivolts, so voltage hides imbalance there.
+4. No. With the reference code the charge only climbs to about 78 % at 15:00 and day one ends near 35 % at midnight (58 % with clear skies). Midnight values on the following days are about 11 %, then the cells hit the floor of -5 %: with both switches closed nothing stops them, while in Part 5 the firmware will open the switches long before that. The current also never settles at zero the way it does on a clear afternoon, so the 30-minute idle rule that triggers balancing in Part 5 would not be met either.
 
 </details>
 
 ## Checkpoint
 
-- `uv run pytest tests/test_chemistry.py tests/test_battery.py -q` shows `18 passed`.
+- `uv run pytest tests/test_chemistry.py tests/test_battery.py -q` shows `21 passed`.
 - `dev_battery.py` prints a plausible day.
 - You can explain in one sentence each: coulomb counting, OCV, why current makes the terminal voltage differ from OCV, why the charger tapers.
 
