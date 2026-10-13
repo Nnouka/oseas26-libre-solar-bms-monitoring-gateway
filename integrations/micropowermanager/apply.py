@@ -72,31 +72,27 @@ ROUTE = '''  {
     children: [
       {
         path: "batteries",
-        component: ChildRouteWrapper,
-        children: [
-          {
-            path: "",
-            component: LibreSolarBmsOverview,
-            meta: {
-              layout: "default",
-              sidebar: { enabled: true, name: "Batteries" },
-              breadcrumb: { level: "base", name: "Batteries", link: "/libre-solar-bms/batteries" },
-            },
+        component: LibreSolarBmsOverview,
+        meta: {
+          layout: "default",
+          sidebar: {
+            enabled: true,
+            name: "Batteries",
           },
-          {
-            path: ":id",
-            component: LibreSolarBmsBatteryDetail,
-            meta: {
-              layout: "default",
-              breadcrumb: {
-                level: "detail",
-                name: "Batteries",
-                link: "/libre-solar-bms/batteries",
-                target: "id",
-              },
-            },
+        },
+      },
+      {
+        path: "batteries/:id",
+        component: LibreSolarBmsBatteryDetail,
+        meta: {
+          layout: "default",
+          breadcrumb: {
+            level: "detail",
+            name: "Batteries",
+            link: "/libre-solar-bms/batteries",
+            target: "id",
           },
-        ],
+        },
       },
     ],
   },
@@ -108,16 +104,37 @@ def routes(text):
         'import LibreSolarBmsBatteryDetail from "@/plugins/libre-solar-bms/modules/Battery/BatteryDetail.vue"\n',
         'import LibreSolarBmsOverview from "@/plugins/libre-solar-bms/modules/Overview/Overview.vue"\n',
     ]
-    lines = text.splitlines(keepends=True)
-    out, done = [], False
-    for line in lines:
-        m = re.search(r'from "@/plugins/([^"]+)"', line)
-        if not done and line.startswith("import ") and m and m.group(1) > "libre-solar-bms/":
-            out.extend(imports)
-            done = True
-        out.append(line)
-    text = "".join(out)
-    return text.replace('  {\n    path: "/angaza-shs",', ROUTE + '  {\n    path: "/angaza-shs",', 1)
+    anchor = '  {\n    path: "/angaza-shs",'
+    # drop an older version of our route block, if present
+    text = re.sub(r'  \{\n    path: "/libre-solar-bms",.*?(?=' + re.escape(anchor) + ')', "", text, flags=re.S)
+    if imports[1] not in text:
+        out, done = [], False
+        for line in text.splitlines(keepends=True):
+            m = re.search(r'from "@/plugins/([^"]+)"', line)
+            if not done and line.startswith("import ") and m and m.group(1) > "libre-solar-bms/":
+                out.extend(imports)
+                done = True
+            out.append(line)
+        text = "".join(out)
+    return text.replace(anchor, ROUTE + anchor, 1)
+
+
+def locale_entry(section, key):
+    """Return a patcher adding "key": "key" to a section of a locale file, in alphabetical order."""
+    def edit(text):
+        new = f'    "{key}": "{key}",\n'
+        out, in_section, done = [], False, False
+        for line in text.splitlines(keepends=True):
+            if not done and line.startswith(f'    "{section}": {{') or (not done and section == "menu" and line.startswith('  "menu": {')):
+                in_section = True
+            elif in_section and not done:
+                m = re.match(r'\s+"([^"]+)":', line)
+                if m and m.group(1).lower() > key.lower():
+                    out.append(new if section == "menu" else new.replace("    ", "      ", 1))
+                    done = True
+            out.append(line)
+        return "".join(out)
+    return edit
 
 
 def main():
@@ -136,7 +153,11 @@ def main():
     print(patch(backend / "bootstrap/providers.php", "LibreSolarBmsServiceProvider", providers))
     print(patch(backend / "app/Services/ApiResolvers/ThirdPartyApiResolverService.php",
                 "LIBRE_SOLAR_BMS_INGEST_API", resolver))
-    print(patch(frontend / "src/ExportedRoutes.js", "LibreSolarBmsOverview", routes))
+    print(patch(frontend / "src/ExportedRoutes.js", 'path: "batteries/:id"', routes))
+    for lang in ("en", "fr", "bu", "pt"):
+        path = frontend / "src/assets/locales" / f"{lang}.json"
+        print(patch(path, '"Battery Health"', locale_entry("menu", "Battery Health")))
+        print(patch(path, '"Batteries"', locale_entry("subMenu", "Batteries")))
     print("\nNext: php artisan migrate && php artisan migrate-tenant")
 
 

@@ -24,7 +24,7 @@ services:
       SPEED: ${SPEED:-60}
       SCENARIO: ${SCENARIO:-normal}
     ports:
-      - "8000:8000"
+      - "8010:8000"
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -45,7 +45,7 @@ services:
       # With a REAL BMS, set TIME_SCALE=1 and SUMMARY_INTERVAL_S=900.
       TIME_SCALE: ${SPEED:-60}
     ports:
-      - "8001:8001"
+      - "8011:8001"
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -76,7 +76,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8002:8002"
+      - "8012:8002"
     volumes:
       - mpm-ingestor-data:/data
     depends_on:
