@@ -1,0 +1,11 @@
+[project]
+name = "mpm-ingestor"
+version = "0.1.0"
+description = "Forwards BMS summaries and fault events from MQTT to MicroPowerManager, with an offline outbox"
+requires-python = ">=3.12"
+dependencies = [
+    "paho-mqtt>=2.1.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]

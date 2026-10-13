@@ -32,7 +32,7 @@ def messages(device_id: str) -> list[tuple[str, dict]]:
 
     return [
         sensor("health", "Battery health", "{{ value_json.health }}", icon="mdi:heart-pulse"),
-        sensor("health_score", "Health score", "{{ value_json.health_score }}", "%",
+        sensor("health_score", "Health score", "{{ value_json.health_score }}", None,
                "mdi:gauge", "measurement", 0),
         sensor("health_reasons", "Health reasons",
                "{{ value_json.health_reasons | join('; ') if value_json.health_reasons | length > 0 else 'all good' }}",

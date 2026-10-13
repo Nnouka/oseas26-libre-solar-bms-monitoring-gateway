@@ -66,5 +66,24 @@ services:
       mosquitto:
         condition: service_healthy
 
+  mpm-ingestor:
+    build: ./services/mpm-ingestor
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MPM_BASE_URL: ${MPM_BASE_URL:-http://host.docker.internal:8000}
+      MPM_API_KEY: ${MPM_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8002:8002"
+    volumes:
+      - mpm-ingestor-data:/data
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   mosquitto-data:
+  mpm-ingestor-data:
