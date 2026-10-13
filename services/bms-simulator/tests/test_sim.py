@@ -1,6 +1,6 @@
 import pytest
 
-from physical_battery import SCENARIOS, ocv
+from battery import SCENARIOS, ocv
 from schema import Meas
 from sim import Simulator
 from thingset import decode_live

@@ -598,7 +598,7 @@ Now compare with the line from your own `native_sim` terminal, character by char
 
 1. In `test_firmware.py` find the test for balancing and change 1700 to 1900. Does it still pass? Explain what the test is checking.
 2. Add a test that a pack at 3.45 V per cell and idle for an hour with **all cells equal** does *not* balance. Which condition makes that true?
-3. The firmware trips `CELL_OVERVOLTAGE` at 3.80 V, but the charger tapers long before that. Look at `physical_battery.py`: can any normal scenario reach 3.80 V? Write down what you would change in the battery to make an `overcharge` scenario.
+3. The firmware trips `CELL_OVERVOLTAGE` at 3.80 V, but the charger tapers long before that. Look at `battery.py`: can any normal scenario reach 3.80 V? Write down what you would change in the battery to make an `overcharge` scenario.
 
 <details>
 <summary>Hints</summary>

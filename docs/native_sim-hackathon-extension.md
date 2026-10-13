@@ -37,7 +37,7 @@ Only build what the production system can use without major changes:
 ## 3. Two layers in the simulator
 
 ```text
-physical_battery.py   physics: OCV, internal resistance, temperature, current profile
+battery.py   physics: OCV, internal resistance, temperature, current profile
 firmware.py  what the firmware does with it: SoC estimate, limits, error flags, state, balancing
 thingset.py  encode/decode the #mLive line + CRC-32
 mapping.py   ThingSet Meas  ->  team MQTT JSON (docs/mqtt-schema.md)

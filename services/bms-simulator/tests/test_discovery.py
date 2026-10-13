@@ -2,7 +2,7 @@ import json
 
 from jinja2 import Environment
 
-from ha_discovery import discovery_messages
+from discovery import discovery_messages
 
 
 def _render(template: str, meas: dict) -> str:

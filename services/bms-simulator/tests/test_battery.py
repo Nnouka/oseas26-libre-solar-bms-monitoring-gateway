@@ -1,7 +1,7 @@
 """The physical battery on its own"""
 import pytest
 
-from physical_battery import SCENARIOS, TAPER_BAND, Battery, ocv
+from battery import SCENARIOS, TAPER_BAND, Battery, ocv
 from chip import MAX_CELLS
 
 

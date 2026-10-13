@@ -5,9 +5,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from physical_battery import SCENARIOS
+from battery import SCENARIOS
 from sim import Simulator
-from mqtt_publisher import Publisher
+from publisher import Publisher
 from runner import SimRunner
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")

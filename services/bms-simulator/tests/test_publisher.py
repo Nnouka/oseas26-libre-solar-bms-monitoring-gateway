@@ -1,7 +1,7 @@
 """The parts of the publisher that need no broker."""
 import json
 
-from mqtt_publisher import Publisher
+from publisher import Publisher
 from schema import Info, Meas
 from sim import Simulator
 

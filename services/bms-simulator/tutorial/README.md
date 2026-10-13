@@ -40,7 +40,7 @@ on your laptop (Zephyr `native_sim`) and see exactly what it says. Two findings 
    keeps the **physical battery** and the **firmware** apart.
 
 ```text
- physical_battery.py            chip.py                firmware.py             thingset.py
+ battery.py            chip.py                firmware.py             thingset.py
  the physics     ->    ChipReading      ->    what the BMS       ->   "#mLive {..} CRC#"
  (truth)               (what the chip         believes and does       (the serial line)
       ^                 measures)                  |    |                    |
@@ -64,7 +64,7 @@ on your laptop (Zephyr `native_sim`) and see exactly what it says. Two findings 
 | [1. Project setup](01-project-setup.md) | set up uv, tests, branch | a green first test | 45 min |
 | [2. MQTT first contact](02-mqtt-first-contact.md) | run a broker; publish, subscribe, retained, last will | feel for the protocol | 1.5 h |
 | [3. The ThingSet line](03-thingset-line.md) | encode, decode and checksum `#mLive` | `thingset.py` | 1.5 h |
-| [4. The physical battery](04-battery-physics.md) | model cells, current, heat | `chemistry.py`, `chip.py`, `physical_battery.py` | 3-4 h |
+| [4. The physical battery](04-battery-physics.md) | model cells, current, heat | `chemistry.py`, `chip.py`, `battery.py` | 3-4 h |
 | [5. The firmware layer](05-firmware-layer.md) | protections, SoC estimate, balancing, state machine | `firmware.py` and the **golden test** against native_sim | 3-4 h |
 | [6. Glue and mapping](06-glue-and-mapping.md) | connect it all and translate to the team's schema | `mapping.py`, `schema.py`, `sim.py` | 1.5 h |
 | [7. The MQTT publisher](07-publisher.md) | publish with last will, retained topics, reconnect | `publisher.py` | 2 h |

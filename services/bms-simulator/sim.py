@@ -6,7 +6,7 @@ import threading
 import firmware as fwmod
 import mapping
 import thingset
-from physical_battery import SCENARIOS, Battery
+from battery import SCENARIOS, Battery
 from firmware import Config, Firmware
 
 MAX_CHUNK_S = 30.0     # one firmware loop iteration per <= 30 simulated seconds

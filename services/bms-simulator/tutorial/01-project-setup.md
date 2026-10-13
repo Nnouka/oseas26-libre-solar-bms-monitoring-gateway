@@ -84,11 +84,11 @@ Create the folder `tests/` and in it a file `conftest.py` (pytest reads it autom
 import sys
 from pathlib import Path
 
-# Make `import physical_battery` work when pytest is started from the service folder.
+# Make `import battery` work when pytest is started from the service folder.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 ```
 
-All our modules sit flat next to `main.py`. This keeps imports short (`from physical_battery import Battery`).
+All our modules sit flat next to `main.py`. This keeps imports short (`from battery import Battery`).
 
 ### 1.6 The first test: health
 

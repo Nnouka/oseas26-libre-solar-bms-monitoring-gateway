@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
 
-import ha_discovery
+import discovery
 from logic import DeviceTracker
 
 log = logging.getLogger("bridge")
@@ -66,7 +66,7 @@ class Bridge:
                 tracker = self.trackers.get(device_id)
                 if tracker is None:
                     tracker = self.trackers[device_id] = DeviceTracker(device_id, self.time_scale)
-                    for topic, payload in ha_discovery.messages(device_id):
+                    for topic, payload in discovery.messages(device_id):
                         client.publish(topic, json.dumps(payload), qos=1, retain=True)
                     log.info("new device: %s", device_id)
 

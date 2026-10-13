@@ -1,7 +1,7 @@
 # Part 4: The physical battery
 
 **Goal.** Model a pack of eight LiFePO4 cells as *physics*: charge, voltage, current, heat. No protections, no State-of-Charge estimate, no MQTT. When you finish
-you will have `chemistry.py`, `chip.py` and `physical_battery.py`, and a script that prints a day in the life of the battery.
+you will have `chemistry.py`, `chip.py` and `battery.py`, and a script that prints a day in the life of the battery.
 
 **Time.** 3 to 4 hours. This is the longest part, and the most fun.
 
@@ -206,13 +206,13 @@ A `dataclass` writes `__init__` for you from the field list. `ChipReading.empty(
 
 </details>
 
-### 4.3 `physical_battery.py`: tests first
+### 4.3 `battery.py`: tests first
 
 ```python
 """The physical battery on its own: no firmware involved."""
 import pytest
 
-from physical_battery import SCENARIOS, TAPER_BAND, Battery, ocv
+from battery import SCENARIOS, TAPER_BAND, Battery, ocv
 from chip import MAX_CELLS
 
 
@@ -349,7 +349,7 @@ def test_leaving_the_cloudy_scenario_brings_the_sun_back():
 
 Read the test names. They are a complete specification of the physical model. Notice how they use the *switch* arguments and `bleed_mask`, which you meet next.
 
-### 4.4 `physical_battery.py`: build it in five small steps
+### 4.4 `battery.py`: build it in five small steps
 
 You will write one class, `Battery`. Do the steps in order and run the matching tests after each. Run `uv run pytest tests/test_battery.py -q -k <name>` to run a single test.
 
@@ -470,7 +470,7 @@ uv run pytest tests/test_battery.py -q
 Expected: `16 passed`.
 
 <details>
-<summary>Solution: physical_battery.py (compare after your tests pass)</summary>
+<summary>Solution: battery.py (compare after your tests pass)</summary>
 
 ```python
 """The physical battery: chemistry, current, heat.  No firmware logic, no MQTT.
@@ -624,7 +624,7 @@ In the service folder (not in `tests/`) create `dev_battery.py`:
 
 ```python
 """Part 4: run the bare battery for two days with both switches closed (no firmware yet)."""
-from physical_battery import Battery
+from battery import Battery
 
 b = Battery(seed=1, start_hour=0.0)
 print(" hour   I(A)  true_soc%  cell_min  cell_max  temp_C")

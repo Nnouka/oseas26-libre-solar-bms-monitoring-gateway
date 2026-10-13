@@ -144,7 +144,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from physical_battery import SCENARIOS
+from battery import SCENARIOS
 from sim import Simulator
 from publisher import Publisher
 from runner import SimRunner
@@ -290,7 +290,7 @@ The ambient cools over about thirty simulated minutes, the flags clear only when
 
 ## Your turn
 
-1. Add a scenario `deep_discharge`: a load so large that the pack empties and the under-voltage protection fires. Which two places need to change? (Hint: `SCENARIOS` and `_apply_scenario`/`wanted_current` in `physical_battery.py`. Write the scenario test in `test_sim.py` first.)
+1. Add a scenario `deep_discharge`: a load so large that the pack empties and the under-voltage protection fires. Which two places need to change? (Hint: `SCENARIOS` and `_apply_scenario`/`wanted_current` in `battery.py`. Write the scenario test in `test_sim.py` first.)
 2. Add `GET /scenarios` returning the list of known scenarios. Write the test first.
 3. Make `POST /scenario/{name}` reject unknown names with the list of valid ones in the error message. (It already does. Where does the list come from? Why is it good that there is only one `SCENARIOS` tuple?)
 

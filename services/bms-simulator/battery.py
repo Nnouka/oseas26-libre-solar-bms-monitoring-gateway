@@ -1,211 +1,138 @@
-"""Physics-light LiFePO4 battery model. No MQTT / web code in here.
+"""The physical battery: chemistry, current, heat.  No firmware logic, no MQTT.
 
-Sign convention (same as the Libre Solar firmware): pack current > 0 = charging.
-Field names mirror the ThingSet `Meas` group of bms-firmware.
+The firmware never sees this object directly, only the ChipReading made from it.
+Keeping them apart is the whole point: the BMS reports what it BELIEVES.
 """
 from __future__ import annotations
 
 import math
 import random
-import threading
 
-# Error flag names = bits of BMS_ERR_* in bms-firmware/include/bms/bms_common.h
-ERR_CELL_UNDERVOLTAGE = "CELL_UNDERVOLTAGE"
-ERR_CELL_OVERVOLTAGE = "CELL_OVERVOLTAGE"
-ERR_DIS_OVERCURRENT = "DIS_OVERCURRENT"
-ERR_CHG_OVERCURRENT = "CHG_OVERCURRENT"
-ERR_DIS_OVERTEMP = "DIS_OVERTEMP"
-ERR_CHG_OVERTEMP = "CHG_OVERTEMP"
-ERR_CELL_FAILURE = "CELL_FAILURE"
+from chemistry import OCV_V, SOC_PCT, interp
+from chip import MAX_CELLS, ChipReading
 
-# LFP open-circuit voltage curve: flat in the middle, steep at the ends
-OCV_SOC = [0.00, 0.05, 0.10, 0.20, 0.50, 0.80, 0.90, 0.95, 1.00]
-OCV_V = [2.90, 3.10, 3.20, 3.25, 3.30, 3.33, 3.38, 3.45, 3.60]
+SCENARIOS = ("normal", "cell_drift", "overheat", "cloudy")
 
-# Protection limits (also published in the `info` topic)
-LIMITS = {
-    "cell_overvoltage_v": 3.65,
-    "cell_undervoltage_v": 2.80,
-    "chg_max_temp_c": 45.0,
-    "dis_max_temp_c": 55.0,
-    "temp_hysteresis_c": 3.0,
-    "cell_failure_diff_v": 0.20,
-    "chg_overcurrent_a": 60.0,
-    "dis_overcurrent_a": 80.0,
-}
+# OCV of one cell as a function of true charge (0..1).  Same shape as the firmware's table, but
+# sorted by increasing charge, and extended a little BELOW 0 % where a real LFP cell collapses.
+_SOC_EXT = [-0.05] + [p / 100.0 for p in SOC_PCT]
+_OCV_EXT = [2.0] + OCV_V
 
-SCENARIOS = ("normal", "cell_drift", "overheat")
+PACK_EXTRA_R_OHM = 0.005
+THERMAL_MASS_J_PER_K = 4300.0
+COOLING_W_PER_K = 2.4              # time constant 4300 / 2.4 = about 30 simulated minutes
+NORMAL_AMBIENT_C = 28.0
+PEAK_SOLAR_C = 0.30                # panel: 0.3 C = 15 A for a 50 Ah battery
+BASE_LOAD_C = 0.02                 # night-time load
+EVENING_LOAD_C = 0.08              # extra load around 19:00
+TAPER_BAND = 0.04                  # charger tapers its current over the last 4 % of charge
+BLEED_A = 0.05                     # balancing resistor current
 
-
-def interp(x: float, xs: list[float], ys: list[float]) -> float:
-    if x <= xs[0]:
-        return ys[0]
-    if x >= xs[-1]:
-        return ys[-1]
-    for i in range(1, len(xs)):
-        if x <= xs[i]:
-            f = (x - xs[i - 1]) / (xs[i] - xs[i - 1])
-            return ys[i - 1] + f * (ys[i] - ys[i - 1])
-    return ys[-1]
+DRIFT_CELL = 2                     # cell_drift: this cell leaks and its resistance grows
+DRIFT_LEAK_A = 2.0
+DRIFT_R_GROWTH_OHM_PER_H = 0.0005
+OVERHEAT_RATE_C_PER_MIN = 0.25     # overheat: the surroundings heat up
+OVERHEAT_MAX_AMBIENT_C = 60.0
+CLOUD_FACTOR = 0.25                # cloudy: the panel delivers 25 % of its clear-sky current
 
 
-class BatteryModel:
-    def __init__(self, cells: int = 8, capacity_ah: float = 100.0,
-                 scenario: str = "normal", start_hour: float = 8.0, seed: int | None = None):
+def ocv(soc: float) -> float:
+    return interp(soc, _SOC_EXT, _OCV_EXT)
+
+
+class Battery:
+    def __init__(self, cells: int = 8, nominal_ah: float = 50.0, true_capacity_factor: float = 0.95,
+                 start_hour: float = 8.0, seed: int | None = None):
+        assert 1 <= cells <= MAX_CELLS
         self.n = cells
-        self.capacity_ah = capacity_ah
-        self._rng = random.Random(seed)
-        self._lock = threading.Lock()
-
-        # Slight manufacturing spread so cells drift apart naturally
-        self.cell_cap = [capacity_ah * self._rng.uniform(0.985, 1.015) for _ in range(cells)]
-        self.cell_r = [0.0010 * self._rng.uniform(0.9, 1.1) for _ in range(cells)]  # ohm
-        self.cell_soc = [self._rng.uniform(0.55, 0.60) for _ in range(cells)]
-
+        self.nominal_ah = nominal_ah
+        self.rng = random.Random(seed)
+        # The cells are 5 % smaller than the label says; the firmware does not know that.
+        self.cap = [nominal_ah * true_capacity_factor * self.rng.uniform(0.985, 1.015)
+                    for _ in range(cells)]
+        self.r_base = [0.0010 * self.rng.uniform(0.9, 1.1) for _ in range(cells)]
+        self.r = list(self.r_base)
+        self.soc = [self.rng.uniform(0.55, 0.60) for _ in range(cells)]   # TRUE charge
         self.sim_s = start_hour * 3600.0
-        self.scenario_s = 0.0          # sim seconds since scenario was selected
-        self.ambient_c = 28.0
         self.temp_c = 29.0
+        self.ambient_c = NORMAL_AMBIENT_C
         self.current_a = 0.0
-        self.ah_throughput = 0.0
-        self.errors: set[str] = set()
-        self.balancing = [False] * cells
         self.scenario = "normal"
-        self.set_scenario(scenario)
+        self.scenario_s = 0.0
+        self.cloud = 1.0               # share of clear-sky solar that reaches the panel (1.0 = clear sky)
 
-    # ------------------------------------------------------------------ control
+    # ------------------------------------------------------------------ helpers
+    def hour_of_day(self) -> float:
+        return (self.sim_s / 3600.0) % 24.0
+
+    def wanted_current(self) -> float:
+        """Solar charge minus load.  + = charging."""
+        h = self.hour_of_day()
+        c = self.nominal_ah            # loads scale with the battery: C-rates, not amps
+        solar = (self.cloud * PEAK_SOLAR_C * c * math.sin(math.pi * (h - 6.0) / 12.0)
+                 if 6.0 <= h <= 18.0 else 0.0)
+        evening = EVENING_LOAD_C * c * math.exp(-((h - 19.0) ** 2) / (2 * 1.5 ** 2))
+        return solar - (BASE_LOAD_C * c + evening) + self.rng.gauss(0.0, 0.004 * c)
+
+    def terminal_voltages(self, current_a: float) -> list[float]:
+        return [ocv(s) + current_a * r for s, r in zip(self.soc, self.r)]
+
     def set_scenario(self, name: str) -> None:
         if name not in SCENARIOS:
             raise ValueError(f"unknown scenario {name!r}; choose from {SCENARIOS}")
-        with self._lock:
-            self.scenario = name
-            self.scenario_s = 0.0
-            # reset effects of previous scenarios
-            self.cell_r = [min(r, 0.0012) for r in self.cell_r]
+        self.scenario, self.scenario_s = name, 0.0
+        self.r = list(self.r_base)
+        self.cloud = CLOUD_FACTOR if name == "cloudy" else 1.0
+
+    def _apply_scenario(self, dt: float) -> None:
+        self.scenario_s += dt
+        if self.scenario == "cell_drift":
+            hours = self.scenario_s / 3600.0
+            k = DRIFT_CELL
+            self.r[k] = self.r_base[k] + DRIFT_R_GROWTH_OHM_PER_H * hours
+            self.soc[k] = max(-0.05, self.soc[k] - DRIFT_LEAK_A * dt / (self.cap[k] * 3600.0))
+        if self.scenario == "overheat":
+            rise = OVERHEAT_RATE_C_PER_MIN * self.scenario_s / 60.0
+            self.ambient_c = min(OVERHEAT_MAX_AMBIENT_C, NORMAL_AMBIENT_C + rise)
+        else:
+            self.ambient_c += (NORMAL_AMBIENT_C - self.ambient_c) * min(1.0, dt / 1800.0)
 
     # ------------------------------------------------------------------ physics
-    def _cell_voltages(self, current: float) -> list[float]:
-        return [interp(s, OCV_SOC, OCV_V) + current * r for s, r in zip(self.cell_soc, self.cell_r)]
-
-    def _target_current(self) -> float:
-        h = (self.sim_s / 3600.0) % 24.0
-        solar = 40.0 * max(0.0, math.sin(math.pi * (h - 6.0) / 12.0)) ** 1.5 if 6 <= h <= 18 else 0.0
-        evening = 12.0 * math.exp(-((h - 19.5) ** 2) / (2 * 2.0 ** 2))
-        load = 2.5 + evening + (3.0 if 6 <= h <= 9 else 0.0)
-        return solar - load + self._rng.gauss(0, 0.6)
-
-    def _step_once(self, dt: float) -> None:
+    def step(self, dt: float, chg_on: bool, dis_on: bool, bleed_mask: int) -> ChipReading:
+        """Advance dt seconds.  `chg_on`/`dis_on` are the BMS's MOSFET switches."""
         self.sim_s += dt
-        self.scenario_s += dt
-        hrs = self.scenario_s / 3600.0
+        self._apply_scenario(dt)
 
-        if self.scenario == "cell_drift":
-            # one weak cell: resistance grows, capacity shrinks
-            self.cell_r[2] = 0.0012 + 0.0012 * hrs
-            self.cell_cap[2] = max(self.capacity_ah * 0.80, self.cell_cap[2] - 0.05 * dt / 3600)
-        if self.scenario == "overheat":
-            # cooling failure: ambient (enclosure) climbs ~0.25 degC per simulated minute
-            self.ambient_c = min(60.0, 28.0 + 0.25 * self.scenario_s / 60.0)
-        else:
-            self.ambient_c += (28.0 - self.ambient_c) * min(1.0, dt / 1800.0)
-
-        # --- desired current, then protections / taper -------------------------
-        i = self._target_current()
-        vmax = max(self._cell_voltages(i))
+        i = self.wanted_current()
         if i > 0:
-            soc_max = max(self.cell_soc)
-            i *= max(0.0, min(1.0, (1.0 - soc_max) / 0.04))   # CV-like taper near full
-            if vmax > LIMITS["cell_overvoltage_v"]:
+            # the charger tapers as the fullest cell approaches 100 %
+            i *= max(0.0, min(1.0, (1.0 - max(self.soc)) / TAPER_BAND))
+            if not chg_on:
                 i = 0.0
-            if ERR_CHG_OVERTEMP in self.errors:
-                i = 0.0
-        else:
-            if min(self._cell_voltages(i)) < LIMITS["cell_undervoltage_v"]:
-                i = 0.0
-            if ERR_DIS_OVERTEMP in self.errors:
-                i = 0.0
+        elif not dis_on:
+            i = 0.0
+
+        for k in range(self.n):                                    # coulomb counting, true capacity
+            self.soc[k] = min(1.05, self.soc[k] + i * dt / (self.cap[k] * 3600.0))
+            if bleed_mask >> k & 1:
+                self.soc[k] -= BLEED_A * dt / (self.cap[k] * 3600.0)
+            self.soc[k] = max(-0.05, self.soc[k])
+
+        heat_w = i * i * (sum(self.r) + PACK_EXTRA_R_OHM)           # I^2 R heating
+        cool_w = COOLING_W_PER_K * (self.temp_c - self.ambient_c)
+        self.temp_c += (heat_w - cool_w) * dt / THERMAL_MASS_J_PER_K
         self.current_a = i
+        return self.read_chip()
 
-        # --- coulomb counting per cell ----------------------------------------
-        for k in range(self.n):
-            self.cell_soc[k] += i * dt / (self.cell_cap[k] * 3600.0)
-        self.ah_throughput += abs(i) * dt / 3600.0
-
-        # --- passive balancing (stretch goal from the learning path) ----------
-        v = self._cell_voltages(i)
-        vmin = min(v)
-        self.balancing = [(i >= 0 and vmax > 3.40 and x > vmin + 0.015) for x in v]
-        for k, b in enumerate(self.balancing):
-            if b:
-                self.cell_soc[k] -= 0.1 * dt / (self.cell_cap[k] * 3600.0)  # 100 mA bleed
-        self.cell_soc = [min(1.0, max(0.0, s)) for s in self.cell_soc]
-
-        # --- thermal: first-order ---------------------------------------------
-        r_pack = sum(self.cell_r) + 0.005
-        heat_w = i * i * r_pack
-        k_cool, c_th = 2.4, 4300.0     # W/K, J/K  (tau ~ 30 min)
-        self.temp_c += (heat_w - k_cool * (self.temp_c - self.ambient_c)) * dt / c_th
-
-        self._update_errors(i, v)
-
-    def _update_errors(self, i: float, v: list[float]) -> None:
-        e = self.errors
-        hyst = LIMITS["temp_hysteresis_c"]
-
-        def latch(name: str, trip: bool, clear: bool) -> None:
-            if trip:
-                e.add(name)
-            elif clear:
-                e.discard(name)
-
-        latch(ERR_CELL_OVERVOLTAGE, max(v) > LIMITS["cell_overvoltage_v"], max(v) < 3.55)
-        latch(ERR_CELL_UNDERVOLTAGE, min(v) < LIMITS["cell_undervoltage_v"], min(v) > 3.0)
-        latch(ERR_CHG_OVERTEMP, self.temp_c > LIMITS["chg_max_temp_c"],
-              self.temp_c < LIMITS["chg_max_temp_c"] - hyst)
-        latch(ERR_DIS_OVERTEMP, self.temp_c > LIMITS["dis_max_temp_c"],
-              self.temp_c < LIMITS["dis_max_temp_c"] - hyst)
-        latch(ERR_CELL_FAILURE, max(v) - min(v) > LIMITS["cell_failure_diff_v"],
-              max(v) - min(v) < LIMITS["cell_failure_diff_v"] * 0.7)
-        latch(ERR_CHG_OVERCURRENT, i > LIMITS["chg_overcurrent_a"], i < LIMITS["chg_overcurrent_a"] * 0.9)
-        latch(ERR_DIS_OVERCURRENT, -i > LIMITS["dis_overcurrent_a"], -i < LIMITS["dis_overcurrent_a"] * 0.9)
-
-    def step(self, dt_sim_s: float) -> None:
-        """Advance the model by dt_sim_s simulated seconds."""
-        with self._lock:
-            while dt_sim_s > 0:
-                chunk = min(30.0, dt_sim_s)     # keep explicit Euler stable
-                self._step_once(chunk)
-                dt_sim_s -= chunk
-
-    # ------------------------------------------------------------------ output
-    def snapshot(self) -> dict:
-        """Raw measurements, the same shape the real BMS would publish."""
-        with self._lock:
-            i = self.current_a
-            v = self._cell_voltages(i)
-            chg_err = {ERR_CHG_OVERTEMP, ERR_CELL_OVERVOLTAGE, ERR_CHG_OVERCURRENT, ERR_CELL_FAILURE}
-            dis_err = {ERR_DIS_OVERTEMP, ERR_CELL_UNDERVOLTAGE, ERR_DIS_OVERCURRENT, ERR_CELL_FAILURE}
-            chg_ok = not (self.errors & chg_err)
-            dis_ok = not (self.errors & dis_err)
-            state = "NORMAL" if chg_ok and dis_ok else "DIS" if dis_ok else "CHG" if chg_ok else "OFF"
-            rnd = self._rng.gauss
-            return {
-                "state": state,
-                "pack_voltage_v": round(sum(v), 2),
-                "pack_current_a": round(i, 2),
-                "soc_pct": round(100 * sum(self.cell_soc) / self.n, 1),
-                "cell_voltages_v": [round(x, 3) for x in v],
-                "cell_temps_c": [round(self.temp_c + rnd(0, 0.15), 1), round(self.temp_c - 0.8 + rnd(0, 0.15), 1)],
-                "mosfet_temp_c": round(self.temp_c + 4 * (i / 40.0) ** 2, 1),
-                "balancing_mask": sum(1 << k for k, b in enumerate(self.balancing) if b),
-                "errors": sorted(self.errors),
-            }
-
-    def debug(self) -> dict:
-        with self._lock:
-            return {
-                "scenario": self.scenario,
-                "sim_hour": round((self.sim_s / 3600.0) % 24, 2),
-                "ambient_c": round(self.ambient_c, 1),
-                "equivalent_cycles": round(self.ah_throughput / (2 * self.capacity_ah), 3),
-            }
+    def read_chip(self) -> ChipReading:
+        """What the BQ76952 would measure right now (with a little sensor noise)."""
+        v = self.terminal_voltages(self.current_a)
+        noise = self.rng.gauss
+        v_pad = [round(x, 3) for x in v] + [0.0] * (MAX_CELLS - self.n)
+        return ChipReading(
+            cell_v=v_pad,
+            current_a=self.current_a,
+            cell_temps_c=[self.temp_c + noise(0, 0.15), self.temp_c - 0.8 + noise(0, 0.15)],
+            ic_temp_c=self.temp_c + 2.0,
+            mosfet_temp_c=self.temp_c + 4.0 * (self.current_a / 40.0) ** 2,
+        )

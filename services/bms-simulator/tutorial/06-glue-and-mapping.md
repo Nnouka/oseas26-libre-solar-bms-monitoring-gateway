@@ -74,7 +74,7 @@ def test_unconnected_channels_are_dropped_and_the_result_matches_the_schema():
 ```python
 import pytest
 
-from physical_battery import SCENARIOS, ocv
+from battery import SCENARIOS, ocv
 from schema import Meas
 from sim import Simulator
 from thingset import decode_live
@@ -311,7 +311,7 @@ import threading
 
 import mapping
 import thingset
-from physical_battery import Battery
+from battery import Battery
 from firmware import Config, Firmware
 
 MAX_CHUNK_S = 30.0     # one firmware loop iteration per at most 30 simulated seconds
@@ -352,7 +352,7 @@ import threading
 import firmware as fwmod
 import mapping
 import thingset
-from physical_battery import SCENARIOS, Battery
+from battery import SCENARIOS, Battery
 from firmware import Config, Firmware
 
 MAX_CHUNK_S = 30.0     # one firmware loop iteration per <= 30 simulated seconds
@@ -482,7 +482,7 @@ hold 47.5 Ah, so it thinks it has discharged less than it has. A real BMS is wro
 
 ## Your turn
 
-1. Temporarily change the default `true_capacity_factor` in `physical_battery.py` to 1.0 and rerun `dev_firmware.py`. How does the estimate error change over three days?
+1. Temporarily change the default `true_capacity_factor` in `battery.py` to 1.0 and rerun `dev_firmware.py`. How does the estimate error change over three days?
 2. Plot `soc_fw` and `soc_true` for 14 days. Install matplotlib (`uv add --dev matplotlib`) or print numbers. Does the error grow without bound? What stops it?
 3. Print `sim.live_line()` after 12 hours. Paste it into `decode_live` from Part 3. Does it round-trip?
 
