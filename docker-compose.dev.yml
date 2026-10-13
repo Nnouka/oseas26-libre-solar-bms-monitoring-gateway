@@ -1,0 +1,21 @@
+# Dev environment: the only thing you install on your machine is Docker.
+#   docker compose -f docker-compose.dev.yml run --rm dev bash
+# Same project name as the main stack, so it shares its network and can reach "mosquitto" etc.
+name: oseas-bms
+
+services:
+  dev:
+    build: ./services/dev
+    working_dir: /work
+    volumes:
+      - .:/work                # edit on Windows with any editor, run in Linux
+      - dev-venv:/opt/venv     # python packages stay out of your repo
+      - dev-uv-cache:/root/.cache/uv
+    environment:
+      MQTT_HOST: mosquitto     # works when the main stack is up
+    stdin_open: true
+    tty: true
+
+volumes:
+  dev-venv:
+  dev-uv-cache:
