@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
 
-import discovery
-from logic import DeviceTracker
+import ha_discovery as discovery
+from bms_health import DeviceTracker
 
 log = logging.getLogger("bridge")
 

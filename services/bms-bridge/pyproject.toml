@@ -5,7 +5,11 @@ description = "Derives health metrics and fault events from raw BMS MQTT telemet
 requires-python = ">=3.12"
 dependencies = [
     "paho-mqtt>=2.1.0",
+    "bms-health",
 ]
+
+[tool.uv.sources]
+bms-health = { path = "../../packages/bms-health" }
 
 [dependency-groups]
 dev = ["pytest>=8"]

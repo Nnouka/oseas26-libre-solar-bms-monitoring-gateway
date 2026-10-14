@@ -11,9 +11,9 @@ Works the same for the simulator and a real BMS. Contract: `docs/mqtt-schema.md`
 
 ## Files
 
-- `logic.py`: pure functions/classes (health score, cycle counting, fault events, fault catalog). No MQTT.
+- Health logic lives in the shared package `packages/bms-health` (health score, cycle counting, fault events, fault catalog). No MQTT.
 - `bridge.py`: MQTT wiring and the summary timer. `discovery.py`: HA entities. `main.py`: entry point + `/health` on port 8001.
-- `tests/test_logic.py`: unit tests (no broker needed).
+- Tests for the health logic: `packages/bms-health/tests`.
 
 ## Config (env)
 

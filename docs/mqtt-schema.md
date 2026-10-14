@@ -15,8 +15,8 @@ pack current **> 0 = charging**, **< 0 = discharging** · `<id>` = device id, e.
 | `bms/<id>/status` | device (+ Last Will) | on connect / unclean disconnect | 1 | yes | all ("last seen", availability) |
 | `bms/<id>/info` | device | on every (re)connect | 1 | yes | all (static metadata + limits) |
 | `bms/<id>/meas` | device / simulator | every `PUBLISH_INTERVAL_S` (default 5 s) | 0 | no | Home Assistant, bridge, Prospect |
-| `bms/<id>/summary` | bridge | every ~15 min | 1 | yes | MPM |
-| `bms/<id>/event` | bridge | on fault raised / cleared | 1 | no | MPM, SMS alert |
+| `bms/<id>/summary` | gateway (wifi-sim) or bridge | every ~15 min | 1 | yes | MPM |
+| `bms/<id>/event` | gateway (wifi-sim) or bridge | on fault raised / cleared | 1 | no | MPM, SMS alert |
 | `homeassistant/<component>/<id>/<key>/config` | simulator now, bridge later | on every (re)connect | 1 | yes | Home Assistant |
 
 `status` payload is the plain string `online` or `offline`. The broker publishes `offline` via the
@@ -66,7 +66,7 @@ Home Assistant computes imbalance itself with a template.
 `capacity_ah`, and `limits` (the protection thresholds: cell OV/UV, charge/discharge max temp,
 cell-failure voltage difference, over-current limits).
 
-## `bms/<id>/summary` (implemented, published by the bridge)
+## `bms/<id>/summary` (implemented, published by the WiFi gateway, or by the bridge for a real MQTT device)
 
 Low-frequency, decision-relevant slice for MPM. Retained, QoS 1. Published every
 `SUMMARY_INTERVAL_S` (default 900 s = 15 min) **and immediately** when the fault set or the health colour changes.
@@ -90,7 +90,7 @@ Low-frequency, decision-relevant slice for MPM. Retained, QoS 1. Published every
 | `imbalance_v` | max minus min of `cell_voltages_v` |
 | `health` / `health_score` / `health_reasons` | green/amber/red from active faults (critical = red, warning = amber), temperature (>=40 C amber, >=45 C red), imbalance (>=100 mV amber, >=200 mV red; **only judged at 10-90 % SoC** because the LFP curve is steep at the ends), SoC < 15 % (amber), SoH < 90 % amber / < 80 % red. Score = 100 minus penalties. |
 
-## `bms/<id>/event` (implemented, published by the bridge)
+## `bms/<id>/event` (implemented, published by the WiFi gateway, or by the bridge for a real MQTT device)
 
 On change only. QoS 1, not retained.
 
