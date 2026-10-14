@@ -1,89 +1,91 @@
 services:
   mosquitto:
-    image: eclipse-mosquitto:2
-    restart: unless-stopped
+    image: eclipse-mosquitto:2.0.20
     ports:
       - "1883:1883"
     volumes:
       - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto-data:/mosquitto/data
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/broker/uptime' -C 1 -W 3 || exit 1"]
+      # publishing succeeds only if the broker accepts connections
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -t healthcheck/ping -m ok -q 1"]
       interval: 5s
-      timeout: 5s
-      retries: 10
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
 
   bms-simulator:
     build: ./services/bms-simulator
-    restart: unless-stopped
     environment:
-      MQTT_HOST: ${MQTT_HOST:-mosquitto}
-      MQTT_PORT: ${MQTT_PORT:-1883}
-      DEVICE_ID: ${DEVICE_ID:-haske-bms-001}
-      PUBLISH_INTERVAL_S: ${PUBLISH_INTERVAL_S:-5}
-      SPEED: ${SPEED:-60}
-      SCENARIO: ${SCENARIO:-normal}
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_ENABLED: "false"       # the gateway publishes, the simulator only plays the BMS
+      PUBLISH_INTERVAL_S: "5"
+      SPEED: "60"
+      SCENARIO: normal
     ports:
-      - "8010:8000"
+      - "8000:8000"
     depends_on:
       mosquitto:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      # the slim image has no curl, but it has Python
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 10s
       timeout: 5s
-      retries: 5
-
-  bms-bridge:
-    build: ./services/bms-bridge
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
+  wifi-sim:
+    build: ./services/wifi-sim
     environment:
-      MQTT_HOST: ${MQTT_HOST:-mosquitto}
-      MQTT_PORT: ${MQTT_PORT:-1883}
-      SUMMARY_INTERVAL_S: ${SUMMARY_INTERVAL_S:-30}
-      # Must equal the simulator SPEED so cycle counting matches simulated time.
-      # With a REAL BMS, set TIME_SCALE=1 and SUMMARY_INTERVAL_S=900.
-      TIME_SCALE: ${SPEED:-60}
+      SOURCE: http://bms-simulator:8000/live # change this to tcp to mimic real bms
+      MQTT_HOST: mosquitto
+      DEVICE_ID: haske-bms-001
+      PUBLISH_INTERVAL_S: "5"
     ports:
-      - "8011:8001"
+      - "8001:8000"
     depends_on:
       mosquitto:
         condition: service_healthy
+      bms-simulator:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001').status==200 else 1)"]
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 10s
       timeout: 5s
-      retries: 5
-
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
-    restart: unless-stopped
     ports:
       - "8123:8123"
     volumes:
-      - ./infra/homeassistant/config:/config
-    depends_on:
-      mosquitto:
-        condition: service_healthy
-
-  mpm-ingestor:
-    build: ./services/mpm-ingestor
-    environment:
-      MQTT_HOST: mosquitto
-      MQTT_PORT: 1883
-      MPM_BASE_URL: ${MPM_BASE_URL:-http://host.docker.internal:8000}
-      MPM_API_KEY: ${MPM_API_KEY:-}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "8012:8002"
-    volumes:
-      - mpm-ingestor-data:/data
+      - ha-config:/config
     depends_on:
       mosquitto:
         condition: service_healthy
     restart: unless-stopped
+  mpm-ingestor:
+      build: ./services/mpm-ingestor
+      environment:
+        MQTT_HOST: mosquitto
+        MQTT_PORT: 1883
+        MPM_BASE_URL: ${MPM_BASE_URL:-http://host.docker.internal:8000}
+        MPM_API_KEY: ${MPM_API_KEY:-}
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+      ports:
+        - "8012:8002"
+      volumes:
+        - mpm-ingestor-data:/data
+      depends_on:
+        mosquitto:
+          condition: service_healthy
+      restart: unless-stopped
 
 volumes:
   mosquitto-data:
+  ha-config:
   mpm-ingestor-data:
