@@ -1,0 +1,150 @@
+# Home Assistant dashboard for the Libre Solar BMS (device: haske-bms-001).
+#
+# How to use: Settings > Dashboards > Battery Monitor > open it > pencil icon >
+# three dots > Raw configuration editor > select all, paste this file, Save.
+#
+# Entity IDs assume the device name "Libre Solar BMS haske-bms-001", i.e. the prefix
+#   libre_solar_bms_haske_bms_001_
+# If your IDs differ (check Settings > Devices & services > Entities), use the raw
+# editor's find-and-replace to swap that prefix everywhere.
+title: Battery Monitor
+views:
+  - title: Battery
+    path: battery
+    icon: mdi:battery-heart
+    cards:
+      # ---- Status -------------------------------------------------------
+      - type: tile
+        entity: sensor.libre_solar_bms_haske_bms_001_battery_health
+        name: Battery health
+        icon: mdi:heart-pulse
+        vertical: true
+      - type: gauge
+        entity: sensor.libre_solar_bms_haske_bms_001_health_score
+        name: Health score
+        min: 0
+        max: 100
+        needle: true
+        segments:
+          - from: 0
+            color: "#db4437"
+          - from: 50
+            color: "#ffa600"
+          - from: 80
+            color: "#43a047"
+      - type: markdown
+        title: Why
+        content: >
+          **{{ states('sensor.libre_solar_bms_haske_bms_001_health_reasons') }}**
+
+
+          State: {{ states('sensor.libre_solar_bms_haske_bms_001_bms_state') }}
+          &nbsp;|&nbsp; Active faults:
+          {{ states('sensor.libre_solar_bms_haske_bms_001_active_faults') }}
+
+      # ---- Gauges -------------------------------------------------------
+      - type: gauge
+        entity: sensor.libre_solar_bms_haske_bms_001_state_of_charge
+        name: State of charge
+        min: 0
+        max: 100
+        segments:
+          - from: 0
+            color: "#db4437"
+          - from: 20
+            color: "#ffa600"
+          - from: 40
+            color: "#43a047"
+      - type: gauge
+        entity: sensor.libre_solar_bms_haske_bms_001_max_cell_temperature
+        name: Max cell temperature
+        min: 0
+        max: 70
+        needle: true
+        segments:
+          - from: 0
+            color: "#43a047"
+          - from: 40
+            color: "#ffa600"
+          - from: 50
+            color: "#db4437"
+      - type: gauge
+        entity: sensor.libre_solar_bms_haske_bms_001_cell_imbalance
+        name: Cell imbalance
+        min: 0
+        max: 150
+        segments:
+          - from: 0
+            color: "#43a047"
+          - from: 50
+            color: "#ffa600"
+          - from: 100
+            color: "#db4437"
+
+      # ---- Key numbers --------------------------------------------------
+      - type: glance
+        title: Pack
+        columns: 4
+        entities:
+          - entity: sensor.libre_solar_bms_haske_bms_001_pack_voltage
+            name: Voltage
+          - entity: sensor.libre_solar_bms_haske_bms_001_pack_current
+            name: Current
+          - entity: sensor.libre_solar_bms_haske_bms_001_pack_power
+            name: Power
+          - entity: sensor.libre_solar_bms_haske_bms_001_mosfet_temperature
+            name: MOSFET
+          - entity: sensor.libre_solar_bms_haske_bms_001_state_of_health_estimated
+            name: SoH
+          - entity: sensor.libre_solar_bms_haske_bms_001_equivalent_full_cycles
+            name: Cycles
+          - entity: binary_sensor.libre_solar_bms_haske_bms_001_fault
+            name: Fault
+
+      # ---- History ------------------------------------------------------
+      - type: history-graph
+        title: Voltage and charge (last 3 hours)
+        hours_to_show: 3
+        entities:
+          - entity: sensor.libre_solar_bms_haske_bms_001_pack_voltage
+          - entity: sensor.libre_solar_bms_haske_bms_001_state_of_charge
+      - type: history-graph
+        title: Temperature (last 3 hours)
+        hours_to_show: 3
+        entities:
+          - entity: sensor.libre_solar_bms_haske_bms_001_max_cell_temperature
+          - entity: sensor.libre_solar_bms_haske_bms_001_mosfet_temperature
+      - type: history-graph
+        title: Current and power (last 3 hours)
+        hours_to_show: 3
+        entities:
+          - entity: sensor.libre_solar_bms_haske_bms_001_pack_current
+          - entity: sensor.libre_solar_bms_haske_bms_001_pack_power
+
+      # ---- Cells --------------------------------------------------------
+      - type: history-graph
+        title: Cell voltages (last 3 hours)
+        hours_to_show: 3
+        entities:
+          - entity: sensor.libre_solar_bms_haske_bms_001_cell_1_voltage
+          - entity: sensor.libre_solar_bms_haske_bms_001_cell_2_voltage
+          - entity: sensor.libre_solar_bms_haske_bms_001_cell_3_voltage
+          - entity: sensor.libre_solar_bms_haske_bms_001_cell_4_voltage
+          - entity: sensor.libre_solar_bms_haske_bms_001_cell_5_voltage
+          - entity: sensor.libre_solar_bms_haske_bms_001_cell_6_voltage
+          - entity: sensor.libre_solar_bms_haske_bms_001_cell_7_voltage
+          - entity: sensor.libre_solar_bms_haske_bms_001_cell_8_voltage
+      - type: entities
+        title: Cells now
+        entities:
+          - sensor.libre_solar_bms_haske_bms_001_cell_1_voltage
+          - sensor.libre_solar_bms_haske_bms_001_cell_2_voltage
+          - sensor.libre_solar_bms_haske_bms_001_cell_3_voltage
+          - sensor.libre_solar_bms_haske_bms_001_cell_4_voltage
+          - sensor.libre_solar_bms_haske_bms_001_cell_5_voltage
+          - sensor.libre_solar_bms_haske_bms_001_cell_6_voltage
+          - sensor.libre_solar_bms_haske_bms_001_cell_7_voltage
+          - sensor.libre_solar_bms_haske_bms_001_cell_8_voltage
+          - type: divider
+          - sensor.libre_solar_bms_haske_bms_001_min_cell_voltage
+          - sensor.libre_solar_bms_haske_bms_001_max_cell_voltage
