@@ -132,7 +132,100 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ---- MicroPowerManager with the Libre Solar BMS plugin: docker compose --profile mpm up --build -d ----
+  mpm-mysql:
+    profiles: ["mpm"]
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: micro_power_manager
+      MYSQL_ROOT_PASSWORD: ${MPM_DB_PASSWORD:-mpm-demo-db-password}
+    volumes:
+      - mpm-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      start_period: 20s
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  mpm-redis:
+    profiles: ["mpm"]
+    image: redis:7
+    restart: unless-stopped
+
+  mpm-backend:
+    profiles: ["mpm"]
+    image: libre-solar-mpm-backend
+    build:
+      context: .
+      dockerfile: integrations/micropowermanager/docker/Dockerfile
+      target: backend
+      args:
+        MPM_REF: ${MPM_REF:-d6632495586a9dc5c4f71decdec33f5f960701b8}
+    env_file: ./integrations/micropowermanager/docker/backend.env
+    environment:
+      DB_PASSWORD: ${MPM_DB_PASSWORD:-mpm-demo-db-password}
+    volumes:
+      - mpm-storage:/var/www/html/storage
+    ports:
+      - "8000:80"
+    depends_on:
+      mpm-mysql: {condition: service_healthy}
+      mpm-redis: {condition: service_started}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/up"]
+      start_period: 300s          # first boot runs central and tenant migrations
+      interval: 15s
+      timeout: 10s
+      retries: 40
+    restart: unless-stopped
+
+  mpm-queue-worker:
+    profiles: ["mpm"]
+    image: libre-solar-mpm-backend
+    entrypoint: ["/usr/local/bin/entrypoint-queue-worker.sh"]
+    env_file: ./integrations/micropowermanager/docker/backend.env
+    environment:
+      DB_PASSWORD: ${MPM_DB_PASSWORD:-mpm-demo-db-password}
+    volumes:
+      - mpm-storage:/var/www/html/storage
+    depends_on:
+      mpm-backend: {condition: service_healthy}
+    restart: unless-stopped
+
+  mpm-scheduler:
+    profiles: ["mpm"]
+    image: libre-solar-mpm-backend
+    entrypoint: ["/usr/local/bin/entrypoint-scheduler.sh"]
+    env_file: ./integrations/micropowermanager/docker/backend.env
+    environment:
+      DB_PASSWORD: ${MPM_DB_PASSWORD:-mpm-demo-db-password}
+    volumes:
+      - mpm-storage:/var/www/html/storage
+    depends_on:
+      mpm-backend: {condition: service_healthy}
+    restart: unless-stopped
+
+  mpm-frontend:
+    profiles: ["mpm"]
+    build:
+      context: .
+      dockerfile: integrations/micropowermanager/docker/Dockerfile
+      target: frontend
+      args:
+        MPM_REF: ${MPM_REF:-d6632495586a9dc5c4f71decdec33f5f960701b8}
+    environment:
+      MPM_ENV: development
+      MPM_BACKEND_URL: http://localhost:8000       # the browser calls the backend on the host port
+    ports:
+      - "8001:80"
+    restart: unless-stopped
+
 volumes:
   mosquitto-data:
   ha-config:
   mpm-ingestor-data:
+  mpm-mysql-data:
+  mpm-storage:
+  mpm-shared:
