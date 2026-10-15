@@ -51,6 +51,19 @@ curl -X POST localhost:8010/scenario/overheat
 
 For a fault demo, speed the battery up (at the default `SPEED=1` the scenarios take hours): `SPEED=60 docker compose up -d firmware-rig bms-bridge`, then `POST /scenario/overheat`. Verified: about 5 minutes later the real firmware raised `CHG_OVERTEMP` and `DIS_OVERTEMP`, and the events reached the MPM ingestor.
 
+### Scenarios
+
+| Name | What the battery does | Expected visible effect |
+|------|-----------------------|-------------------------|
+| `charging` | forces +0.2 C (10 A at 50 Ah) around the clock | state CHG, SoC rises |
+| `discharging` | forces -0.2 C | state DCH, SoC falls |
+| `low_soc` | cells start at 10-14 % and drain slowly at -0.01 C | health amber (SoC < 15 %) |
+| `overcurrent` | forces -1.2 C (60 A at 50 Ah) | `DIS_OVERCURRENT` raised, then cleared when the FET opens; repeats while the surge lasts |
+| `undervoltage` | one cell leaks 30 A until it collapses | `CELL_UNDERVOLTAGE` raised; stays until the cell recovers |
+| `instant_recovery` | 600 simulated seconds of the overcurrent surge, then switches itself to `normal` | `DIS_OVERCURRENT` raised, then cleared about 10 s later with no manual reset |
+
+`normal`, `cell_drift`, `overheat` and `cloudy` are described in the model comments in `battery.py`. `overcurrent` and `instant_recovery` open the discharge FET once the firmware trips, so the current drops to zero afterwards, as on a real pack. Event names above were observed on the real firmware at `SPEED=60` (bridge `bms/<id>/event` topic).
+
 The image builds the firmware with `west` (several GB download, a few minutes of compiling). It is Linux/amd64 only because `native_sim` is a 32-bit program.
 
 ## Test
