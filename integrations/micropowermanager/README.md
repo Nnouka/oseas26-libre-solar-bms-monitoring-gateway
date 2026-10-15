@@ -121,8 +121,13 @@ The list should go Needs attention, then Critical, and the detail page shows the
 ## How it works
 
 - Ingest endpoints: `POST /api/libre-solar-bms/ingest/summary` and `/events`, protected by an MPM API key (`Authorization: Bearer ...`).
-- Read endpoints for the UI: `/api/libre-solar-bms/batteries`, `/batteries/{id}`, `/batteries/{id}/events`.
-- Old summaries are ignored, and events are stored once (idempotent), so re-delivery is safe.
+- Read endpoints for the UI: `/api/libre-solar-bms/batteries`, `/batteries/{id}`, and for the history:
+  - `/batteries/{id}/summaries?from=&to=&health=&page=&per_page=` (every summary received, newest first, paged),
+  - `/batteries/{id}/trend?from=&to=&buckets=` (averages per time bucket for the charts; default 96 buckets over 24 hours),
+  - `/batteries/{id}/events?from=&to=&severity=&type=&page=&per_page=` (paged; the older `limit` parameter still works).
+  `from` and `to` are ISO timestamps; bad filter values return HTTP 422.
+- The battery detail page has three tabs: **Overview** (current values, active faults, trend charts for charge, voltage, temperature and imbalance over 24 hours, 7 or 30 days, or a custom range), **History** (every summary, filter by time and health, click a row for its reasons and faults) and **Events** (the fault log, filter by time, severity and type).
+- Every summary is stored once in `libre_solar_bms_summaries` (idempotent by device and timestamp); the battery list shows the latest. A late summary after an outage goes to history but does not overwrite the current state. Events are stored once too, so re-delivery is safe.
 - The ingestor uses a persistent MQTT session and an on-disk outbox, so data is not lost if MPM is down for a while.
 
 ## Troubleshooting
@@ -136,5 +141,6 @@ The list should go Needs attention, then Critical, and the detail page shows the
 ## Known limits
 
 - Health and state-of-health are estimates from a simple cycle model.
+- History only covers what the summary contains (no per-cell voltages) and starts when the plugin version with history is installed. There is no automatic pruning: at one summary per 15 minutes that is about 35,000 rows per battery per year.
 - The plugin id (33) could clash with a future upstream plugin.
 - The MQTT broker is anonymous, which is fine for the demo only.

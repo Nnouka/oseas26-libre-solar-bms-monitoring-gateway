@@ -1,5 +1,4 @@
 High Priority
-3. Richer Battery Health page in MPM: more detail per battery
 
 
 Nice to have
