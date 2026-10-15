@@ -5,6 +5,7 @@ namespace App\Plugins\LibreSolarBms\Services;
 use App\Plugins\LibreSolarBms\Models\LibreSolarBmsDevice;
 use App\Plugins\LibreSolarBms\Models\LibreSolarBmsEvent;
 use App\Plugins\LibreSolarBms\Models\LibreSolarBmsSummary;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 
@@ -110,15 +111,60 @@ class LibreSolarBmsService {
     }
 
     /**
-     * @return Collection<int, LibreSolarBmsEvent>
+     * @param array<string, mixed> $filters from, to, health
      */
-    public function latestEvents(int $batteryId, int $limit): Collection {
+    public function summaries(int $batteryId, array $filters, int $perPage): LengthAwarePaginator {
+        $this->getBattery($batteryId);
+
+        return $this->summaryModel->newQuery()
+            ->where('libre_solar_bms_device_id', $batteryId)
+            ->when($filters['from'] ?? null, fn ($q, $v) => $q->where('reported_at', '>=', Carbon::parse($v)))
+            ->when($filters['to'] ?? null, fn ($q, $v) => $q->where('reported_at', '<=', Carbon::parse($v)))
+            ->when($filters['health'] ?? null, fn ($q, $v) => $q->where('health', $v))
+            ->orderByDesc('reported_at')->orderByDesc('id')
+            ->paginate($perPage);
+    }
+
+    /**
+     * Averages per time bucket, oldest first; empty buckets are left out.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function trend(int $batteryId, Carbon $from, Carbon $to, int $buckets): array {
+        $this->getBattery($batteryId);
+        $span = max(1, (int) abs($to->getTimestamp() - $from->getTimestamp()));
+        $width = max(1, (int) ceil($span / $buckets));
+
+        $rows = $this->summaryModel->newQuery()
+            ->where('libre_solar_bms_device_id', $batteryId)
+            ->whereBetween('reported_at', [$from, $to])
+            ->selectRaw('FLOOR((UNIX_TIMESTAMP(reported_at) - ?) / ?) AS bucket', [$from->getTimestamp(), $width])
+            ->selectRaw('AVG(soc_pct) AS soc_pct, AVG(pack_voltage_v) AS pack_voltage_v, AVG(max_temp_c) AS max_temp_c, AVG(imbalance_v) AS imbalance_v')
+            ->groupBy('bucket')->orderBy('bucket')->get();
+
+        return $rows->map(fn ($r) => [
+            't' => Carbon::createFromTimestamp($from->getTimestamp() + (int) $r->bucket * $width)->toIso8601String(),
+            'soc_pct' => $r->soc_pct === null ? null : round((float) $r->soc_pct, 1),
+            'pack_voltage_v' => $r->pack_voltage_v === null ? null : round((float) $r->pack_voltage_v, 2),
+            'max_temp_c' => $r->max_temp_c === null ? null : round((float) $r->max_temp_c, 1),
+            'imbalance_v' => $r->imbalance_v === null ? null : round((float) $r->imbalance_v, 3),
+        ])->all();
+    }
+
+    /**
+     * @param array<string, mixed> $filters from, to, severity, type
+     */
+    public function events(int $batteryId, array $filters, int $perPage): LengthAwarePaginator {
+        $this->getBattery($batteryId);
+
         return $this->event->newQuery()
             ->where('libre_solar_bms_device_id', $batteryId)
-            ->orderByDesc('occurred_at')
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get();
+            ->when($filters['from'] ?? null, fn ($q, $v) => $q->where('occurred_at', '>=', Carbon::parse($v)))
+            ->when($filters['to'] ?? null, fn ($q, $v) => $q->where('occurred_at', '<=', Carbon::parse($v)))
+            ->when($filters['severity'] ?? null, fn ($q, $v) => $q->where('severity', $v))
+            ->when($filters['type'] ?? null, fn ($q, $v) => $q->where('type', $v))
+            ->orderByDesc('occurred_at')->orderByDesc('id')
+            ->paginate($perPage);
     }
 
     private function findOrRegister(string $deviceId): LibreSolarBmsDevice {

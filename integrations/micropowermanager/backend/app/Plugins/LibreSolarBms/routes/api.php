@@ -16,5 +16,7 @@ Route::prefix('libre-solar-bms')->group(function () {
         Route::get('/batteries', [LibreSolarBmsBatteryController::class, 'index']);
         Route::get('/batteries/{batteryId}', [LibreSolarBmsBatteryController::class, 'show'])->where('batteryId', '[0-9]+');
         Route::get('/batteries/{batteryId}/events', [LibreSolarBmsBatteryController::class, 'events'])->where('batteryId', '[0-9]+');
+        Route::get('/batteries/{batteryId}/summaries', [LibreSolarBmsBatteryController::class, 'summaries'])->where('batteryId', '[0-9]+');
+        Route::get('/batteries/{batteryId}/trend', [LibreSolarBmsBatteryController::class, 'trend'])->where('batteryId', '[0-9]+');
     });
 });
