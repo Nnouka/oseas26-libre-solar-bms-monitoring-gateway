@@ -159,9 +159,9 @@ services:
   mpm-backend:
     profiles: ["mpm"]
     image: libre-solar-mpm-backend
-    # The worker and scheduler repeat this build block (same image, same cache) so a fresh machine builds
-    # the image instead of trying to pull it from Docker Hub.
-    build: &mpm-backend-build
+    # Only this service builds the shared image. The worker and scheduler reuse it (pull_policy: never), because
+    # building the same tag from three services in parallel races on a cold cache ("image already exists").
+    build:
       context: .
       dockerfile: integrations/micropowermanager/docker/Dockerfile
       target: backend
@@ -188,7 +188,7 @@ services:
   mpm-queue-worker:
     profiles: ["mpm"]
     image: libre-solar-mpm-backend
-    build: *mpm-backend-build
+    pull_policy: never
     entrypoint: ["/usr/local/bin/entrypoint-queue-worker.sh"]
     env_file: ./integrations/micropowermanager/docker/backend.env
     environment:
@@ -202,7 +202,7 @@ services:
   mpm-scheduler:
     profiles: ["mpm"]
     image: libre-solar-mpm-backend
-    build: *mpm-backend-build
+    pull_policy: never
     entrypoint: ["/usr/local/bin/entrypoint-scheduler.sh"]
     env_file: ./integrations/micropowermanager/docker/backend.env
     environment:
