@@ -19,7 +19,7 @@ services:
     # on TCP 3333, exactly where the relay reads a real BMS C1's UART.
     build: ./services/firmware-rig
     environment:
-      SPEED: ${SPEED:-1}              # 1 = real time; higher = faster battery (SoC then starts at 0, see readme)
+      SPEED: ${SPEED:-60}              # 1 = real time; higher = faster battery (SoC then starts at 0, see readme)
       SCENARIO: ${SCENARIO:-normal}
       CAPACITY_AH: "50"
     ports:
@@ -57,6 +57,7 @@ services:
       retries: 3
       start_period: 10s
     restart: unless-stopped
+
   wifi-sim:
     build: ./services/wifi-sim
     environment:
@@ -76,6 +77,7 @@ services:
       retries: 3
       start_period: 10s
     restart: unless-stopped
+
   bms-bridge:
     # The relay only forwards `meas`; the bridge derives `summary` and `event` for MPM (packages/bms-health).
     build:
@@ -85,7 +87,7 @@ services:
       MQTT_HOST: mosquitto
       MQTT_PORT: "1883"
       SUMMARY_INTERVAL_S: ${SUMMARY_INTERVAL_S:-30}   # real BMS: 900
-      TIME_SCALE: ${SPEED:-1}       # must equal the rig SPEED; real BMS: 1
+      TIME_SCALE: ${SPEED:-60}      # must equal the rig SPEED; real BMS: 1
     ports:
       - "8011:8001"
     depends_on:
@@ -98,6 +100,7 @@ services:
       retries: 3
       start_period: 10s
     restart: unless-stopped
+
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     ports:
@@ -108,23 +111,24 @@ services:
       mosquitto:
         condition: service_healthy
     restart: unless-stopped
+
   mpm-ingestor:
-      build: ./services/mpm-ingestor
-      environment:
-        MQTT_HOST: mosquitto
-        MQTT_PORT: 1883
-        MPM_BASE_URL: ${MPM_BASE_URL:-http://host.docker.internal:8000}
-        MPM_API_KEY: ${MPM_API_KEY:-}
-      extra_hosts:
-        - "host.docker.internal:host-gateway"
-      ports:
-        - "8012:8002"
-      volumes:
-        - mpm-ingestor-data:/data
-      depends_on:
-        mosquitto:
-          condition: service_healthy
-      restart: unless-stopped
+    build: ./services/mpm-ingestor
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MPM_BASE_URL: ${MPM_BASE_URL:-http://host.docker.internal:8000}
+      MPM_API_KEY: ${MPM_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8012:8002"
+    volumes:
+      - mpm-ingestor-data:/data
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   mosquitto-data:

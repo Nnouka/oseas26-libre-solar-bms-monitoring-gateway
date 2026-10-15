@@ -40,9 +40,11 @@ firmware-rig --#mLive (TCP, like a UART)--> wifi-sim (relay) -> Mosquitto -> bms
 
 MicroPowerManager only receives the low-frequency summary and fault events, shown as a **Battery Health** page (list plus detail page with a fault log and recommended actions). Home Assistant gets the full stream.
 
-### Quick start (simulator, Home Assistant)
+Each service has its own readme next to its code: [`firmware-rig`](services/firmware-rig/readme.md), [`bms-bridge`](services/bms-bridge/readme.md), [`mpm-ingestor`](services/mpm-ingestor/readme.md).
 
-Requires Docker.
+### Quick start (firmware rig, Home Assistant)
+
+Requires Docker. The first build compiles the real firmware (several GB download, a few minutes) and is Linux/amd64 only, so on Apple Silicon it runs under emulation.
 
 ```bash
 cp .env.example .env
@@ -50,7 +52,22 @@ docker compose up --build -d
 ```
 
 - Home Assistant: http://localhost:8123 (the BMS device appears automatically).
-- Trigger a fault: `curl -X POST http://localhost:8010/scenario/overheat`, then `curl -X POST http://localhost:8010/scenario/normal` to reset.
+- Check the rig: `curl localhost:8010/health` and `curl localhost:8010/state` (the model's hidden truth).
+- Trigger a fault: `curl -X POST http://localhost:8010/scenario/overheat`, then `curl -X POST http://localhost:8010/scenario/normal` to reset. Scenarios: `normal`, `cell_drift`, `overheat`, `cloudy`. They change the simulated battery only; the firmware reacts as it would to real readings.
+- Pure-Python fallback without the firmware: `RELAY_SOURCE=http://bms-simulator:8000/live docker compose --profile sim up --build -d`.
+
+**Time speed.** `SPEED` runs the firmware's battery faster than real time and also sets the bridge `TIME_SCALE`, so cycle counting stays consistent. `docker-compose.yml` defaults to `60` so faults and summaries show up within minutes, but at `SPEED > 1` the state of charge starts at 0 until the firmware's first full-charge reset. `.env.example` sets `SPEED=1` (real time, SoC initialised from the cells at boot). A real BMS needs `SPEED=1`.
+
+**Real hardware.** Point the relay at a BMS C1's UART instead of the rig: `RELAY_SOURCE=serial:COM5` (or `/dev/ttyUSB0`). `tcp://`, `file:` and `http://.../live` sources are also supported.
+
+| Port | Service |
+|------|---------|
+| 1883 | Mosquitto |
+| 3333 | Firmware `#mLive` line (TCP, UART stand-in) |
+| 8010 / 8011 / 8012 / 8013 / 8014 | firmware-rig / bms-bridge / mpm-ingestor / wifi-sim / bms-simulator APIs |
+| 8123 | Home Assistant |
+
+`docker-compose.dev.yml` adds a `dev` container (only Docker needed on the host) on the same network; see [`docs/docker-only.md`](docs/docker-only.md).
 
 ### Add MicroPowerManager
 
@@ -58,9 +75,9 @@ MPM runs separately and gets our plugin through an overlay. Follow [`integration
 
 ### Status
 
-- Done: schema, simulator, bridge, Home Assistant integration, MPM ingestion and Battery Health page.
-- Next: SMS alerts through MPM, a real BMS over WiFi (path A1), Prospect adapter, persisting the cycle count across restarts.
-- Known limits: state of health is a simple cycle-model estimate; the broker is anonymous (demo only).
+- Done: schema, firmware rig (real firmware on a simulated battery, closed loop with the FET state), serial/TCP relay, bridge, Home Assistant integration, MPM ingestion and Battery Health page. Verified: an overheat scenario raised `CHG_OVERTEMP` and `DIS_OVERTEMP` in the real firmware and the events reached the MPM ingestor.
+- Next: test against a real BMS C1 over serial, SMS alerts through MPM, Prospect adapter, persisting the cycle count across restarts, the A2 Cicada relay (`services/cicada-relay-sim` is a placeholder).
+- Known limits: state of health is a simple cycle-model estimate; the rig models chip protections but not chip cell balancing, so it validates message formats and firmware behaviour, not protection hardware; the broker is anonymous (demo only).
 
 ---
 
