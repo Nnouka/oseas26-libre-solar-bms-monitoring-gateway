@@ -9,7 +9,15 @@ export default {
   get(batteryId) {
     return Client.get(`${resource}/${batteryId}`)
   },
-  events(batteryId, limit = 50) {
-    return Client.get(`${resource}/${batteryId}/events`, { params: { limit } })
+  summaries(batteryId, params = {}) {
+    return Client.get(`${resource}/${batteryId}/summaries`, { params })
+  },
+  trend(batteryId, params = {}) {
+    return Client.get(`${resource}/${batteryId}/trend`, { params })
+  },
+  // `params` may be an old-style numeric limit.
+  events(batteryId, params = {}) {
+    const query = typeof params === "number" ? { limit: params } : params
+    return Client.get(`${resource}/${batteryId}/events`, { params: query })
   },
 }

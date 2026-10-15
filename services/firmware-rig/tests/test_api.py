@@ -39,3 +39,5 @@ def test_scenario_can_be_switched_and_unknown_ones_are_refused():
     assert battery.scenario == "overheat"
     refused = c.post("/scenario/volcano")
     assert refused.status_code == 400 and all(name in refused.json()["detail"] for name in SCENARIOS)
+    assert c.post("/scenario/undervoltage").json() == {"scenario": "undervoltage"}
+    assert "instant_recovery" in refused.json()["detail"]

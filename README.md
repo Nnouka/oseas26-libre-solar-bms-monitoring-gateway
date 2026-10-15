@@ -45,7 +45,7 @@ flowchart LR
 | Service | What it does | Host port |
 |---------|--------------|-----------|
 | `mosquitto` | MQTT broker (the single hub) | 1883 |
-| `firmware-rig` | The real Libre Solar firmware (Zephyr `native_sim`) fed by a battery model; serves its `#mLive` line on TCP 3333; scenarios `normal`, `cell_drift`, `overheat`, `cloudy` ([readme](services/firmware-rig/readme.md)) | 8010 (3333) |
+| `firmware-rig` | The real Libre Solar firmware (Zephyr `native_sim`) fed by a battery model; serves its `#mLive` line on TCP 3333; scenarios `normal`, `charging`, `discharging`, `low_soc`, `cell_drift`, `overheat`, `cloudy`, `overcurrent`, `undervoltage`, `instant_recovery` ([readme](services/firmware-rig/readme.md)) | 8010 (3333) |
 | `wifi-sim` | The relay: reads the serial `#mLive` line, publishes `meas`, `info` and status over MQTT. Forwards only; reference for the real ESP32/Cicada relay | 8013 |
 | `bms-simulator` | Pure-Python fallback without the firmware (`--profile sim`) | 8014 |
 | `bms-bridge` | Derives health score, state of health and fault events; publishes `summary` and `event` topics; Home Assistant discovery | 8011 |
@@ -67,7 +67,7 @@ docker compose up --build -d
 
 - Home Assistant: http://localhost:8123 (the BMS device appears automatically).
 - Check the rig: `curl localhost:8010/health` and `curl localhost:8010/state` (the model's hidden truth).
-- Trigger a fault: `curl -X POST http://localhost:8010/scenario/overheat`, then `curl -X POST http://localhost:8010/scenario/normal` to reset. Scenarios: `normal`, `cell_drift`, `overheat`, `cloudy`. They change the simulated battery only; the firmware reacts as it would to real readings.
+- Trigger a fault: `curl -X POST http://localhost:8010/scenario/overheat`, then `curl -X POST http://localhost:8010/scenario/normal` to reset. Scenarios: `normal`, `charging`, `discharging`, `low_soc`, `cell_drift`, `overheat`, `cloudy`, `overcurrent`, `undervoltage`, `instant_recovery`. They change the simulated battery only; the firmware reacts as it would to real readings.
 - Pure-Python fallback without the firmware: `RELAY_SOURCE=http://bms-simulator:8000/live docker compose --profile sim up --build -d`.
 
 **Time speed.** `SPEED` runs the firmware's battery faster than real time and also sets the bridge `TIME_SCALE`, so cycle counting stays consistent. `docker-compose.yml` defaults to `60` so faults and summaries show up within minutes, but at `SPEED > 1` the state of charge starts at 0 until the firmware's first full-charge reset. `.env.example` sets `SPEED=60` (real time, SoC initialised from the cells at boot). A real BMS needs `SPEED=1`.
@@ -85,7 +85,13 @@ docker compose up --build -d
 
 ### Add MicroPowerManager
 
-MPM runs separately and gets our plugin through an overlay. Follow [`integrations/micropowermanager/README.md`](integrations/micropowermanager/README.md) (includes the Windows workarounds), then set `MPM_API_KEY` in `.env`. Never commit the real key.
+One command builds MPM with our plugin, starts it next to the gateway and wires the API key automatically:
+
+```bash
+docker compose --profile mpm up --build -d
+```
+
+Then open http://localhost:8001 (login defaults in `.env.example`). Details, the first-build time and the manual route for developing the plugin: [`integrations/micropowermanager/README.md`](integrations/micropowermanager/README.md). Never commit a real key.
 
 ### Status
 

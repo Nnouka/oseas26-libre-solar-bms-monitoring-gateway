@@ -33,14 +33,31 @@ def http_post(url: str, api_key: str, body: dict) -> int | None:
 
 
 class Sender:
-    def __init__(self, outbox: Outbox, base_url: str, api_key: str, transport: Transport = http_post):
+    def __init__(self, outbox: Outbox, base_url: str, api_key: str, transport: Transport = http_post,
+                 key_file: str | None = None):
         self.outbox, self.base_url, self.api_key, self.transport = outbox, base_url.rstrip("/"), api_key, transport
+        self.key_file = key_file
         self.last_success: float | None = None
         self.last_status: int | None = None
 
+    def current_key(self) -> str:
+        """The key in `key_file` (written by mpm-bootstrap) if there is one, else the environment key, else ''.
+
+        The file wins so a stale MPM_API_KEY left in .env cannot shadow the key bootstrap just created.
+        """
+        if self.key_file:
+            try:
+                with open(self.key_file, encoding="utf-8") as handle:
+                    key = handle.read().strip()
+            except OSError:
+                key = ""
+            if key:
+                return key
+        return self.api_key
+
     def run_once(self) -> bool:
         """Try everything that is due. Returns True if any row was acknowledged or dropped."""
-        if not self.api_key:
+        if not self.current_key():
             return False
         progressed = False
         for row_id, summary in self.outbox.due("summary", limit=100):
@@ -52,7 +69,7 @@ class Sender:
         return progressed
 
     def _deliver(self, ids: list[int], path: str, body: dict) -> bool:
-        status = self.transport(self.base_url + path, self.api_key, body)
+        status = self.transport(self.base_url + path, self.current_key(), body)
         self.last_status = status
         if status is not None and 200 <= status < 300:
             self.outbox.done(ids)

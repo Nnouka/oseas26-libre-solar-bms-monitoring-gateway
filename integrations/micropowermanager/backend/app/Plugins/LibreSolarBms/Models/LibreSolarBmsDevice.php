@@ -7,8 +7,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
- * Latest known state of one battery (a Libre Solar BMS). Only the most recent summary is kept:
- * MPM is not a time-series store, the history lives in Home Assistant / Prospect.
+ * Latest known state of one battery (a Libre Solar BMS). The latest summary is kept here; every summary
+ * is also stored in libre_solar_bms_summaries.
  *
  * @property      int                                       $id
  * @property      string                                    $device_id
@@ -27,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property      Carbon|null                               $summary_at
  * @property      Carbon|null                               $last_seen_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, LibreSolarBmsEvent> $events
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, LibreSolarBmsSummary> $summaries
  */
 class LibreSolarBmsDevice extends BaseModel {
     protected $table = 'libre_solar_bms_devices';
@@ -43,5 +44,12 @@ class LibreSolarBmsDevice extends BaseModel {
      */
     public function events(): HasMany {
         return $this->hasMany(LibreSolarBmsEvent::class, 'libre_solar_bms_device_id');
+    }
+
+    /**
+     * @return HasMany<LibreSolarBmsSummary, $this>
+     */
+    public function summaries(): HasMany {
+        return $this->hasMany(LibreSolarBmsSummary::class, 'libre_solar_bms_device_id');
     }
 }

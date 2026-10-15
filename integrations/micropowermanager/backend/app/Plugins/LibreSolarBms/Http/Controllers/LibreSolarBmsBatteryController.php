@@ -4,9 +4,10 @@ namespace App\Plugins\LibreSolarBms\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ApiResource;
+use App\Plugins\LibreSolarBms\Http\Requests\HistoryQueryRequest;
 use App\Plugins\LibreSolarBms\Services\LibreSolarBmsService;
 use Dedoc\Scramble\Attributes\Group;
-use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 #[Group('Plugins / Libre Solar BMS', 'Battery health for the MPM web client')]
 class LibreSolarBmsBatteryController extends Controller {
@@ -25,9 +26,23 @@ class LibreSolarBmsBatteryController extends Controller {
         return ApiResource::make($this->service->getBattery($batteryId));
     }
 
-    public function events(Request $request, int $batteryId): ApiResource {
-        $limit = min($request->integer('limit', self::EVENT_LIMIT_DEFAULT), self::EVENT_LIMIT_MAX);
+    public function summaries(HistoryQueryRequest $request, int $batteryId): ApiResource {
+        return ApiResource::make(
+            $this->service->summaries($batteryId, $request->validated(), $request->integer('per_page', 25))
+        );
+    }
 
-        return ApiResource::make($this->service->latestEvents($batteryId, max($limit, 1)));
+    public function trend(HistoryQueryRequest $request, int $batteryId): ApiResource {
+        $to = $request->filled('to') ? Carbon::parse($request->input('to')) : Carbon::now();
+        $from = $request->filled('from') ? Carbon::parse($request->input('from')) : $to->copy()->subDay();
+
+        return ApiResource::make($this->service->trend($batteryId, $from, $to, $request->integer('buckets', 96)));
+    }
+
+    public function events(HistoryQueryRequest $request, int $batteryId): ApiResource {
+        $limit = min($request->integer('limit', self::EVENT_LIMIT_DEFAULT), self::EVENT_LIMIT_MAX);
+        $perPage = max($request->integer('per_page', $limit), 1);
+
+        return ApiResource::make($this->service->events($batteryId, $request->validated(), $perPage));
     }
 }
