@@ -109,13 +109,16 @@ def test_key_file_that_appears_later_is_picked_up_without_a_restart(tmp_path):
     assert outbox.depth()["event"] == 0
 
 
-def test_env_key_wins_over_the_key_file(tmp_path):
+def test_key_file_wins_over_a_stale_env_key_and_env_is_the_fallback(tmp_path):
     keyfile = tmp_path / "key"
-    keyfile.write_text("FILEKEY")
     outbox, sender, calls = make_keyfile(tmp_path, keyfile, api_key="ENVKEY")
     outbox.add_event("a", {"i": 1})
     sender.run_once()
-    assert calls == ["ENVKEY"]
+    assert calls == ["ENVKEY"]                                # no file: the env key is used
+    keyfile.write_text("FILEKEY")
+    outbox.add_event("a", {"i": 2})
+    sender.run_once()
+    assert calls == ["ENVKEY", "FILEKEY"]                     # the file written by mpm-bootstrap wins
 
 
 def test_an_empty_key_file_means_no_key(tmp_path):

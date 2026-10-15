@@ -41,16 +41,19 @@ class Sender:
         self.last_status: int | None = None
 
     def current_key(self) -> str:
-        """The key from the environment, else from `key_file` (written later by mpm-bootstrap), else ''."""
-        if self.api_key:
-            return self.api_key
+        """The key in `key_file` (written by mpm-bootstrap) if there is one, else the environment key, else ''.
+
+        The file wins so a stale MPM_API_KEY left in .env cannot shadow the key bootstrap just created.
+        """
         if self.key_file:
             try:
                 with open(self.key_file, encoding="utf-8") as handle:
-                    return handle.read().strip()
+                    key = handle.read().strip()
             except OSError:
-                return ""
-        return ""
+                key = ""
+            if key:
+                return key
+        return self.api_key
 
     def run_once(self) -> bool:
         """Try everything that is due. Returns True if any row was acknowledged or dropped."""
