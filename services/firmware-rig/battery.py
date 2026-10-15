@@ -42,6 +42,8 @@ LOW_SOC_DRAIN_C = -0.01            # ...and a trickle load that keeps them there
 OVERCURRENT_C = -1.2               # overcurrent: 1.2 C (60 A at 50 Ah); the chip trips discharge above 1 C
 FORCED_C_RATE = {"charging": CHARGING_C, "discharging": DISCHARGING_C, "low_soc": LOW_SOC_DRAIN_C,
                  "overcurrent": OVERCURRENT_C, "instant_recovery": OVERCURRENT_C}
+UV_LEAK_A = 30.0                   # undervoltage: one cell leaks this much until it collapses
+RECOVERY_FAULT_S = 600.0           # instant_recovery: simulated seconds of surge (about 10 s real at SPEED=60)
 
 
 def ocv(soc: float) -> float:
@@ -116,6 +118,14 @@ class Battery:
     def _scn_overheat(self, dt: float) -> None:
         rise = OVERHEAT_RATE_C_PER_MIN * self.scenario_s / 60.0
         self.ambient_c = min(OVERHEAT_MAX_AMBIENT_C, NORMAL_AMBIENT_C + rise)
+
+    def _scn_undervoltage(self, dt: float) -> None:
+        k = min(DRIFT_CELL, self.n - 1)
+        self.soc[k] = max(-0.05, self.soc[k] - UV_LEAK_A * dt / (self.cap[k] * 3600.0))
+
+    def _scn_instant_recovery(self, dt: float) -> None:
+        if self.scenario_s >= RECOVERY_FAULT_S:
+            self.set_scenario("normal")
 
     # ------------------------------------------------------------------ physics
     def step(self, dt: float, chg_on: bool, dis_on: bool, bleed_mask: int) -> ChipReading:

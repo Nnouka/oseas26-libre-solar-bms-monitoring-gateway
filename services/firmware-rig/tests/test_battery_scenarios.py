@@ -80,3 +80,49 @@ def test_existing_scenarios_have_no_forced_current():
         b = Battery(seed=1)
         b.set_scenario(name)
         assert b.force_c is None, name
+
+
+CUV = 1 << 2           # SAFETY_STATUS_A bit
+
+
+def cell_voltages(b: Battery) -> list[float]:
+    return [v for v in b.read_chip().cell_v if v > 0.5]
+
+
+def test_undervoltage_collapses_one_cell_below_the_chip_limit():
+    normal = Battery(seed=1)
+    for _ in range(300):
+        normal.step(60.0, True, True, 0)
+    b = Battery(seed=1)
+    b.set_scenario("undervoltage")
+    for _ in range(300):
+        b.step(60.0, True, True, 0)
+        if min(cell_voltages(b)) < 2.5:
+            break
+    assert min(cell_voltages(b)) < 2.5
+    assert min(cell_voltages(normal)) >= 2.5                 # a normal battery does not do that in 5 hours
+    status_a, _b, _c = ChipProtections().update(b.read_chip())
+    assert status_a & CUV
+
+
+def test_undervoltage_works_on_a_small_pack():
+    for cells in (2, 4):
+        b = Battery(cells=cells, seed=1)
+        b.set_scenario("undervoltage")
+        for _ in range(300):
+            b.step(60.0, True, True, 0)
+        assert min(cell_voltages(b)) < 2.5, cells
+
+
+def test_instant_recovery_raises_the_fault_then_returns_to_normal_by_itself():
+    b = Battery(seed=1)
+    b.set_scenario("instant_recovery")
+    step(b)
+    assert -b.current_a > b.nominal_ah                       # the surge
+    protections = ChipProtections(capacity_ah=b.nominal_ah)
+    assert protections.update(b.read_chip())[0] & OCD1
+    step(b, 10)                                              # 11 minutes in total: past the 600 s surge
+    assert b.scenario == "normal" and b.force_c is None
+    step(b)
+    assert -b.current_a < b.nominal_ah
+    assert not protections.update(b.read_chip())[0] & OCD1   # the latch released
