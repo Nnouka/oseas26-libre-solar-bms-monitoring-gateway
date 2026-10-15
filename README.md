@@ -23,9 +23,23 @@ tools operators and the community already use.
 
 A working gateway built on the schema in [`docs/mqtt-schema.md`](docs/mqtt-schema.md). It runs the real BMS firmware on a simulated battery (the **firmware rig**); real-hardware transport is the next step.
 
-```
-firmware-rig --#mLive (TCP, like a UART)--> wifi-sim (relay) -> Mosquitto -> bms-bridge -+-> Home Assistant
-(real firmware on a simulated battery)                                                     +-> mpm-ingestor -> MicroPowerManager
+```mermaid
+flowchart LR
+    rig["firmware-rig<br/>real firmware on a simulated battery"]
+    relay["wifi-sim<br/>(relay)"]
+    mqtt{{"Mosquitto<br/>MQTT broker"}}
+    bridge["bms-bridge"]
+    ha["Home Assistant"]
+    ing["mpm-ingestor"]
+    mpm["MicroPowerManager"]
+
+    rig -- "#mLive (TCP, like a UART)" --> relay
+    relay -- "meas, info, status" --> mqtt
+    mqtt --> bridge
+    bridge -- "summary, event" --> mqtt
+    mqtt -- "full stream" --> ha
+    mqtt -- "summary, event" --> ing
+    ing --> mpm
 ```
 
 | Service | What it does | Host port |
@@ -56,7 +70,7 @@ docker compose up --build -d
 - Trigger a fault: `curl -X POST http://localhost:8010/scenario/overheat`, then `curl -X POST http://localhost:8010/scenario/normal` to reset. Scenarios: `normal`, `cell_drift`, `overheat`, `cloudy`. They change the simulated battery only; the firmware reacts as it would to real readings.
 - Pure-Python fallback without the firmware: `RELAY_SOURCE=http://bms-simulator:8000/live docker compose --profile sim up --build -d`.
 
-**Time speed.** `SPEED` runs the firmware's battery faster than real time and also sets the bridge `TIME_SCALE`, so cycle counting stays consistent. `docker-compose.yml` defaults to `60` so faults and summaries show up within minutes, but at `SPEED > 1` the state of charge starts at 0 until the firmware's first full-charge reset. `.env.example` sets `SPEED=1` (real time, SoC initialised from the cells at boot). A real BMS needs `SPEED=1`.
+**Time speed.** `SPEED` runs the firmware's battery faster than real time and also sets the bridge `TIME_SCALE`, so cycle counting stays consistent. `docker-compose.yml` defaults to `60` so faults and summaries show up within minutes, but at `SPEED > 1` the state of charge starts at 0 until the firmware's first full-charge reset. `.env.example` sets `SPEED=60` (real time, SoC initialised from the cells at boot). A real BMS needs `SPEED=1`.
 
 **Real hardware.** Point the relay at a BMS C1's UART instead of the rig: `RELAY_SOURCE=serial:COM5` (or `/dev/ttyUSB0`). `tcp://`, `file:` and `http://.../live` sources are also supported.
 

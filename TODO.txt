@@ -1,4 +1,4 @@
-1. battery scenarios: charging, discharging, low soc, cell imbalance, overcurrent, undervoltage, recovery
+1. battery scenarios: charging, discharging, low_soc, cell_drift, cloudy, overcurrent, undervoltage, instant_recovery
 2. docker image for running mpm ondemand and installing the plugin with the single build command
 4. disable email smtp on mpm for local run, this always fails so company registration always fails
 3. modify the plugin battery health page on mpm to show more details

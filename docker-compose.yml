@@ -21,7 +21,8 @@ services:
     environment:
       SPEED: ${SPEED:-60}              # 1 = real time; higher = faster battery (SoC then starts at 0, see readme)
       SCENARIO: ${SCENARIO:-normal}
-      CAPACITY_AH: "50"
+      CAPACITY_AH: ${CAPACITY_AH:-50}
+      CELLS: ${CELLS:-8}
     ports:
       - "8010:8000"
       - "3333:3333"
@@ -63,8 +64,9 @@ services:
     environment:
       SOURCE: ${RELAY_SOURCE:-tcp://firmware-rig:3333}   # the rig; a real C1 would be serial:COM5
       MQTT_HOST: mosquitto
-      DEVICE_ID: haske-bms-001
-      PUBLISH_INTERVAL_S: "5"
+      DEVICE_ID: ${DEVICE_ID:-haske-bms-001}
+      PUBLISH_INTERVAL_S: ${PUBLISH_INTERVAL_S:-5}
+      CAPACITY_AH: ${CAPACITY_AH:-50}
     ports:
       - "8013:8000"
     depends_on:
