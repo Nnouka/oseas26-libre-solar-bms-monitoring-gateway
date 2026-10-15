@@ -159,7 +159,9 @@ services:
   mpm-backend:
     profiles: ["mpm"]
     image: libre-solar-mpm-backend
-    build:
+    # The worker and scheduler repeat this build block (same image, same cache) so a fresh machine builds
+    # the image instead of trying to pull it from Docker Hub.
+    build: &mpm-backend-build
       context: .
       dockerfile: integrations/micropowermanager/docker/Dockerfile
       target: backend
@@ -186,6 +188,7 @@ services:
   mpm-queue-worker:
     profiles: ["mpm"]
     image: libre-solar-mpm-backend
+    build: *mpm-backend-build
     entrypoint: ["/usr/local/bin/entrypoint-queue-worker.sh"]
     env_file: ./integrations/micropowermanager/docker/backend.env
     environment:
@@ -199,6 +202,7 @@ services:
   mpm-scheduler:
     profiles: ["mpm"]
     image: libre-solar-mpm-backend
+    build: *mpm-backend-build
     entrypoint: ["/usr/local/bin/entrypoint-scheduler.sh"]
     env_file: ./integrations/micropowermanager/docker/backend.env
     environment:
