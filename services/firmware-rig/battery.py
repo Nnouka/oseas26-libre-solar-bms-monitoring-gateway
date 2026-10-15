@@ -11,7 +11,8 @@ import random
 from chemistry import OCV_V, SOC_PCT, interp
 from chip import MAX_CELLS, ChipReading
 
-SCENARIOS = ("normal", "cell_drift", "overheat", "cloudy")
+SCENARIOS = ("normal", "cell_drift", "overheat", "cloudy", "charging", "discharging", "low_soc",
+             "overcurrent", "undervoltage", "instant_recovery")
 
 # OCV of one cell as a function of true charge (0..1).  Same shape as the firmware's table, but
 # sorted by increasing charge, and extended a little BELOW 0 % where a real LFP cell collapses.
@@ -34,6 +35,13 @@ DRIFT_R_GROWTH_OHM_PER_H = 0.0005
 OVERHEAT_RATE_C_PER_MIN = 0.25     # overheat: the surroundings heat up
 OVERHEAT_MAX_AMBIENT_C = 60.0
 CLOUD_FACTOR = 0.25                # cloudy: the panel delivers 25 % of its clear-sky current
+CHARGING_C = 0.2                   # charging / discharging: the current is forced, as a C-rate (10 A at 50 Ah)
+DISCHARGING_C = -0.2
+LOW_SOC_RANGE = (0.10, 0.14)       # low_soc: where the cells start (true charge)
+LOW_SOC_DRAIN_C = -0.01            # ...and a trickle load that keeps them there
+OVERCURRENT_C = -1.2               # overcurrent: 1.2 C (60 A at 50 Ah); the chip trips discharge above 1 C
+FORCED_C_RATE = {"charging": CHARGING_C, "discharging": DISCHARGING_C, "low_soc": LOW_SOC_DRAIN_C,
+                 "overcurrent": OVERCURRENT_C, "instant_recovery": OVERCURRENT_C}
 
 
 def ocv(soc: float) -> float:
@@ -60,6 +68,7 @@ class Battery:
         self.scenario = "normal"
         self.scenario_s = 0.0
         self.cloud = 1.0               # share of clear-sky solar that reaches the panel (1.0 = clear sky)
+        self.force_c: float | None = None   # C-rate that replaces the solar/load profile (None = normal profile)
 
     # ------------------------------------------------------------------ helpers
     def hour_of_day(self) -> float:
@@ -69,6 +78,8 @@ class Battery:
         """Solar charge minus load.  + = charging."""
         h = self.hour_of_day()
         c = self.nominal_ah            # loads scale with the battery: C-rates, not amps
+        if self.force_c is not None:
+            return self.force_c * c + self.rng.gauss(0.0, 0.004 * c)
         solar = (self.cloud * PEAK_SOLAR_C * c * math.sin(math.pi * (h - 6.0) / 12.0)
                  if 6.0 <= h <= 18.0 else 0.0)
         evening = EVENING_LOAD_C * c * math.exp(-((h - 19.0) ** 2) / (2 * 1.5 ** 2))
@@ -83,19 +94,28 @@ class Battery:
         self.scenario, self.scenario_s = name, 0.0
         self.r = list(self.r_base)
         self.cloud = CLOUD_FACTOR if name == "cloudy" else 1.0
+        self.force_c = FORCED_C_RATE.get(name)
+        if name == "low_soc":
+            self.soc = [self.rng.uniform(*LOW_SOC_RANGE) for _ in range(self.n)]
 
     def _apply_scenario(self, dt: float) -> None:
+        """Run the handler `_scn_<name>` of the active scenario, if it has one (normal, charging, ... do not)."""
         self.scenario_s += dt
-        if self.scenario == "cell_drift":
-            hours = self.scenario_s / 3600.0
-            k = DRIFT_CELL
-            self.r[k] = self.r_base[k] + DRIFT_R_GROWTH_OHM_PER_H * hours
-            self.soc[k] = max(-0.05, self.soc[k] - DRIFT_LEAK_A * dt / (self.cap[k] * 3600.0))
-        if self.scenario == "overheat":
-            rise = OVERHEAT_RATE_C_PER_MIN * self.scenario_s / 60.0
-            self.ambient_c = min(OVERHEAT_MAX_AMBIENT_C, NORMAL_AMBIENT_C + rise)
-        else:
+        handler = getattr(self, f"_scn_{self.scenario}", None)
+        if handler is not None:
+            handler(dt)
+        if self.scenario != "overheat":
             self.ambient_c += (NORMAL_AMBIENT_C - self.ambient_c) * min(1.0, dt / 1800.0)
+
+    def _scn_cell_drift(self, dt: float) -> None:
+        hours = self.scenario_s / 3600.0
+        k = DRIFT_CELL
+        self.r[k] = self.r_base[k] + DRIFT_R_GROWTH_OHM_PER_H * hours
+        self.soc[k] = max(-0.05, self.soc[k] - DRIFT_LEAK_A * dt / (self.cap[k] * 3600.0))
+
+    def _scn_overheat(self, dt: float) -> None:
+        rise = OVERHEAT_RATE_C_PER_MIN * self.scenario_s / 60.0
+        self.ambient_c = min(OVERHEAT_MAX_AMBIENT_C, NORMAL_AMBIENT_C + rise)
 
     # ------------------------------------------------------------------ physics
     def step(self, dt: float, chg_on: bool, dis_on: bool, bleed_mask: int) -> ChipReading:
