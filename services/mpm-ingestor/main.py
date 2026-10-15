@@ -17,12 +17,13 @@ MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MPM_BASE_URL = os.getenv("MPM_BASE_URL", "http://localhost:8000")
 MPM_API_KEY = os.getenv("MPM_API_KEY", "")
+MPM_API_KEY_FILE = os.getenv("MPM_API_KEY_FILE", "")
 OUTBOX_PATH = os.getenv("OUTBOX_PATH", "outbox.db")
 HTTP_PORT = int(os.getenv("HTTP_PORT", "8002"))
 POLL_S = float(os.getenv("POLL_S", "1"))
 
 outbox = Outbox(OUTBOX_PATH)
-sender = Sender(outbox, MPM_BASE_URL, MPM_API_KEY)
+sender = Sender(outbox, MPM_BASE_URL, MPM_API_KEY, key_file=MPM_API_KEY_FILE or None)
 ingestor = Ingestor(MQTT_HOST, MQTT_PORT, outbox)
 
 
@@ -31,7 +32,7 @@ class Health(BaseHTTPRequestHandler):
         body = json.dumps({
             "status": "ok", "service": "mpm-ingestor",
             "mqtt_connected": ingestor.connected,
-            "mpm_configured": bool(MPM_API_KEY),
+            "mpm_configured": bool(sender.current_key()),
             "queued": outbox.depth(),
             "received": ingestor.stats,
             "last_rejected": ingestor.last_rejected,
@@ -56,8 +57,8 @@ def deliver_forever(stop: threading.Event) -> None:
 
 
 if __name__ == "__main__":
-    if not MPM_API_KEY:
-        log.warning("MPM_API_KEY is not set: messages are queued but NOT delivered until it is.")
+    if not sender.current_key():
+        log.warning("No MPM API key yet (MPM_API_KEY or MPM_API_KEY_FILE): messages are queued but NOT delivered until one appears.")
     ingestor.start()
     stop = threading.Event()
     threading.Thread(target=deliver_forever, args=(stop,), daemon=True, name="deliver").start()

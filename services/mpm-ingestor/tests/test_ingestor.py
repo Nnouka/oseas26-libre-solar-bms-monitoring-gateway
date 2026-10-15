@@ -87,3 +87,40 @@ def test_event_trim_drops_oldest_when_full(tmp_path):
 
 def test_backoff_is_capped():
     assert backoff_s(1) == 2 and backoff_s(50) == MAX_BACKOFF_S
+
+
+def make_keyfile(tmp_path, key_file, api_key=""):
+    clock = Clock()
+    outbox = Outbox(str(tmp_path / "o.db"), max_rows=5, clock=clock)
+    calls = []
+    sender = Sender(outbox, "http://mpm:8000", api_key,
+                    lambda url, key, body: calls.append(key) or 200, key_file=str(key_file))
+    return outbox, sender, calls
+
+
+def test_key_file_that_appears_later_is_picked_up_without_a_restart(tmp_path):
+    keyfile = tmp_path / "key"
+    outbox, sender, calls = make_keyfile(tmp_path, keyfile)
+    outbox.add_event("a", {"i": 1})
+    assert not sender.run_once() and calls == []              # no key yet: queued, nothing sent
+    assert outbox.depth()["event"] == 1
+    keyfile.write_text("FILEKEY\n")
+    assert sender.run_once() and calls == ["FILEKEY"]         # newline stripped
+    assert outbox.depth()["event"] == 0
+
+
+def test_env_key_wins_over_the_key_file(tmp_path):
+    keyfile = tmp_path / "key"
+    keyfile.write_text("FILEKEY")
+    outbox, sender, calls = make_keyfile(tmp_path, keyfile, api_key="ENVKEY")
+    outbox.add_event("a", {"i": 1})
+    sender.run_once()
+    assert calls == ["ENVKEY"]
+
+
+def test_an_empty_key_file_means_no_key(tmp_path):
+    keyfile = tmp_path / "key"
+    keyfile.write_text("  \n")
+    outbox, sender, calls = make_keyfile(tmp_path, keyfile)
+    outbox.add_event("a", {"i": 1})
+    assert not sender.run_once() and calls == [] and sender.current_key() == ""

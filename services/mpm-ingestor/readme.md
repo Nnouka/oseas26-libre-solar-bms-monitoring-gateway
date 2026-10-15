@@ -21,6 +21,7 @@ plugin endpoints, with an offline outbox so nothing is lost when the network or 
 `MQTT_HOST`, `MQTT_PORT`, `MPM_BASE_URL` (default `http://localhost:8000`; in Docker use
 `http://host.docker.internal:8000`), `MPM_API_KEY` (create it in MPM: Settings > API keys), `OUTBOX_PATH`, `POLL_S`.
 Without `MPM_API_KEY` messages are queued but not delivered.
+`MPM_API_KEY_FILE` is the path of a file holding the key. It is read on every delivery attempt, so it may appear after start; `MPM_API_KEY` wins when both are set. The compose `mpm` profile uses `/shared/mpm_api_key`, written by `mpm-bootstrap`.
 
 ## Test
 
