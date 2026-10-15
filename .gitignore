@@ -9,3 +9,6 @@ __pycache__
 infra/homeassistant/config/*
 !infra/homeassistant/config/readme.md
 .env
+
+# Talk slides (local only)
+presentation/
