@@ -1,5 +1,4 @@
 High Priority
-2. One-build MPM image included with the single root docker-compose.yml: run MPM on demand with the plugin installed in a single build command
 3. Richer Battery Health page in MPM: more detail per battery
 
 

@@ -85,7 +85,13 @@ docker compose up --build -d
 
 ### Add MicroPowerManager
 
-MPM runs separately and gets our plugin through an overlay. Follow [`integrations/micropowermanager/README.md`](integrations/micropowermanager/README.md) (includes the Windows workarounds), then set `MPM_API_KEY` in `.env`. Never commit the real key.
+One command builds MPM with our plugin, starts it next to the gateway and wires the API key automatically:
+
+```bash
+docker compose --profile mpm up --build -d
+```
+
+Then open http://localhost:8001 (login defaults in `.env.example`). Details, the first-build time and the manual route for developing the plugin: [`integrations/micropowermanager/README.md`](integrations/micropowermanager/README.md). Never commit a real key.
 
 ### Status
 

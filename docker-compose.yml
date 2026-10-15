@@ -121,12 +121,14 @@ services:
       MQTT_PORT: "1883"
       MPM_BASE_URL: ${MPM_BASE_URL:-http://host.docker.internal:8000}
       MPM_API_KEY: ${MPM_API_KEY:-}
+      MPM_API_KEY_FILE: /shared/mpm_api_key
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "8012:8002"
     volumes:
       - mpm-ingestor-data:/data
+      - mpm-shared:/shared:ro
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -221,6 +223,23 @@ services:
     ports:
       - "8001:80"
     restart: unless-stopped
+
+  mpm-bootstrap:
+    # One-shot: creates the company, the owner and an API key, and leaves the key in the shared volume.
+    profiles: ["mpm"]
+    image: python:3.12-slim
+    command: ["python", "/bootstrap.py"]
+    environment:
+      MPM_URL: http://mpm-backend
+      MPM_OWNER_EMAIL: ${MPM_OWNER_EMAIL:-owner@example.com}
+      MPM_OWNER_PASSWORD: ${MPM_OWNER_PASSWORD:-demo-password-1}
+      MPM_KEY_FILE: /shared/mpm_api_key
+    volumes:
+      - ./integrations/micropowermanager/docker/bootstrap.py:/bootstrap.py:ro
+      - mpm-shared:/shared
+    depends_on:
+      mpm-backend: {condition: service_healthy}
+    restart: "no"
 
 volumes:
   mosquitto-data:

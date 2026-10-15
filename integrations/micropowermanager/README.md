@@ -30,7 +30,25 @@ The `mpm-ingestor` service (in `services/mpm-ingestor/`) reads the low-frequency
 | MPM ingestor | 8012 |
 | Home Assistant | 8123 |
 
-## Setup (about 30 minutes the first time)
+## Quick start (one command)
+
+From the root of this repo:
+
+```bash
+docker compose --profile mpm up --build -d
+```
+
+This builds MPM with the Battery Health plugin from a pinned upstream commit (`MPM_REF` in `.env`), starts it next to the gateway, creates a company and an owner, and gives `mpm-ingestor` an API key automatically. The first build takes about 10-20 minutes (PHP, Composer, the Vue build); later starts are quick.
+
+- MPM: http://localhost:8001 (backend API on 8000). Sign in with `MPM_OWNER_EMAIL` / `MPM_OWNER_PASSWORD` from `.env` (demo defaults: `owner@example.com` / `demo-password-1`; change them in `.env` before first start if others can reach the machine).
+- Battery Health, Batteries: `haske-bms-001` appears within a minute.
+- Data lives in the `mpm-*` Docker volumes. To reset only MPM: `docker compose --profile mpm rm -sf mpm-backend mpm-queue-worker mpm-scheduler mpm-frontend mpm-mysql mpm-redis mpm-bootstrap`, then `docker volume rm <project>_mpm-mysql-data <project>_mpm-storage <project>_mpm-shared`. (`docker compose down -v` would also delete the Home Assistant and Mosquitto volumes.)
+- Stop any separately running MPM first: both use ports 8000 and 8001.
+- The key file written by `mpm-bootstrap` wins over any `MPM_API_KEY` in `.env`, so an old key there does not matter with this profile.
+
+## Manual setup (to develop the plugin with hot reload; about 30 minutes the first time)
+
+The quick start above builds MPM from a pinned upstream commit. Use this route when you want to edit the plugin and see changes live.
 
 Run MPM in a **separate folder** next to this repo, not inside it.
 
