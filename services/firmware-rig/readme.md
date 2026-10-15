@@ -2,14 +2,30 @@
 
 The **real Libre Solar BMS firmware** (Zephyr `native_sim`) running on a **simulated battery**. To the software around it, it looks like a BMS C1 on a serial port: the firmware's `#mLive` line is served on TCP port 3333, exactly where the relay would read a real UART (`SOURCE=tcp://firmware-rig:3333` instead of `serial:COM5`).
 
-```text
-battery.py (cells, current, temperature)
-   -> encoder.py        ChipReading -> BQ76952 register bytes
-   -> protections.py    the chip's own trips (SAFETY_STATUS), which the emulator does not have
-   -> firmware.py       `i2c write` into the firmware's own shell  (the emulated chip is just memory)
-real firmware (native_sim) --uart_1--> #mLive --> TCP :3333 --> relay --> MQTT --> bridge --> MPM / Home Assistant
-   ^                                     |
-   +-- rBmsState (FET switches) ---------+   closed loop: the model stops charging when the firmware does
+```mermaid
+flowchart LR
+    subgraph rig["firmware-rig (Python)"]
+        battery["battery.py<br/>cells, current, temperature"]
+        encoder["encoder.py<br/>ChipReading to BQ76952 register bytes"]
+        prot["protections.py<br/>the chip's own trips (SAFETY_STATUS),<br/>which the emulator does not have"]
+        fw["firmware.py<br/>i2c write into the firmware's own shell<br/>(the emulated chip is just memory)"]
+        battery --> encoder
+        battery --> prot
+        encoder --> fw
+        prot --> fw
+    end
+
+    firmware["real firmware<br/>(native_sim)"]
+    tcp["TCP :3333"]
+    relay["relay"]
+    mqtt{{"MQTT"}}
+    bridge["bridge"]
+    out["MPM / Home Assistant"]
+
+    fw -- "i2c write" --> firmware
+    firmware -- "uart_1: #mLive" --> tcp
+    tcp --> relay --> mqtt --> bridge --> out
+    firmware -. "rBmsState (FET switches)<br/>closed loop: the model stops charging<br/>when the firmware does" .-> battery
 ```
 
 ## Files
