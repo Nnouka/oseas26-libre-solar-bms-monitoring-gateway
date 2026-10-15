@@ -85,7 +85,8 @@ def test_bleeding_lowers_one_cell_only():
 
 
 def test_scenarios_are_known_and_unknown_ones_rejected():
-    assert SCENARIOS == ("normal", "cell_drift", "overheat", "cloudy")
+    assert SCENARIOS == ("normal", "cell_drift", "overheat", "cloudy", "charging", "discharging", "low_soc",
+                         "overcurrent", "undervoltage", "instant_recovery")
     with pytest.raises(ValueError):
         Battery().set_scenario("bogus")
 
