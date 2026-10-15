@@ -1,0 +1,16 @@
+[project]
+name = "bms-health"
+version = "0.1.0"
+description = "Health score, cycle counting and fault events for a Libre Solar BMS"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["bms_health"]
+
+[dependency-groups]
+dev = ["pytest>=8"]

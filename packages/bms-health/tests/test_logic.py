@@ -1,8 +1,6 @@
-import sys, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from datetime import datetime, timedelta, timezone
 
-from logic import DeviceTracker, assess_health
+from bms_health import DeviceTracker, assess_health
 
 T0 = datetime(2026, 10, 9, 12, 0, 0, tzinfo=timezone.utc)
 

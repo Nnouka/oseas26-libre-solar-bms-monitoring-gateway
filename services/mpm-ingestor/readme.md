@@ -8,7 +8,13 @@ plugin endpoints, with an offline outbox so nothing is lost when the network or 
 - `sender.py`: HTTP delivery with `Authorization: Bearer <MPM_API_KEY>`. 2xx = done, 400/422 = dropped
   (retrying cannot help), anything else (unreachable, 401/403, 404, 429, 5xx) = retried with exponential backoff up to 5 min.
 - `ingestor.py`: MQTT client with a persistent session (QoS 1), so the broker also queues messages while this service is down.
-- `main.py`: wiring + `/health` on port 8002 (queue depth, last MPM status).
+  Each message is checked by `validate.py` before it is queued; a bad one is dropped with a log line and counted.
+- `validate.py`: mirrors the MPM plugin's request rules (`IngestSummaryRequest`, `IngestEventsRequest`) and also
+  requires the payload `device_id` to match the topic. Needed because MPM answers 422 for a whole event batch if one event is
+  invalid, and a 422 is dropped, so one malformed event would otherwise discard up to 49 good ones.
+  Event types: `fault_raised`, `fault_cleared`, `device_online`, `device_offline`.
+- `main.py`: wiring + `/health` on port 8002 (queue depth, last MPM status, `received` accepted/rejected counts per
+  topic, and `last_rejected` with the reason for the most recent refusal).
 
 ## Config (env)
 

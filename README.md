@@ -21,17 +21,19 @@ tools operators and the community already use.
 
 ## Team Haske solution
 
-A working gateway built on the schema in [`docs/mqtt-schema.md`](docs/mqtt-schema.md). It currently runs against a BMS simulator; real-hardware transport is the next step.
+A working gateway built on the schema in [`docs/mqtt-schema.md`](docs/mqtt-schema.md). It runs the real BMS firmware on a simulated battery (the **firmware rig**); real-hardware transport is the next step.
 
 ```
-BMS simulator -> Mosquitto (MQTT) -> bms-bridge -+-> Home Assistant (full stream, auto-discovery)
-                                                 +-> mpm-ingestor -> MicroPowerManager (Battery Health page)
+firmware-rig --#mLive (TCP, like a UART)--> wifi-sim (relay) -> Mosquitto -> bms-bridge -+-> Home Assistant
+(real firmware on a simulated battery)                                                     +-> mpm-ingestor -> MicroPowerManager
 ```
 
 | Service | What it does | Host port |
 |---------|--------------|-----------|
 | `mosquitto` | MQTT broker (the single hub) | 1883 |
-| `bms-simulator` | Publishes realistic BMS data; scenarios `normal`, `cell_drift`, `overheat` | 8010 |
+| `firmware-rig` | The real Libre Solar firmware (Zephyr `native_sim`) fed by a battery model; serves its `#mLive` line on TCP 3333; scenarios `normal`, `cell_drift`, `overheat`, `cloudy` ([readme](services/firmware-rig/readme.md)) | 8010 (3333) |
+| `wifi-sim` | The relay: reads the serial `#mLive` line, publishes `meas`, `info` and status over MQTT. Forwards only; reference for the real ESP32/Cicada relay | 8013 |
+| `bms-simulator` | Pure-Python fallback without the firmware (`--profile sim`) | 8014 |
 | `bms-bridge` | Derives health score, state of health and fault events; publishes `summary` and `event` topics; Home Assistant discovery | 8011 |
 | `homeassistant` | Receives the full stream as auto-discovered entities | 8123 |
 | `mpm-ingestor` | Sends low-frequency summaries and fault events to MPM (persistent MQTT session, on-disk outbox with retry) | 8012 |

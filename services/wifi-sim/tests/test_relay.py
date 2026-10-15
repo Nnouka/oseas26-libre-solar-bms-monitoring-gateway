@@ -99,3 +99,15 @@ def test_api_health_and_bad_wifi_state():
     c = TestClient(main.app)
     assert c.get("/health").json()["service"] == "wifi-sim"
     assert c.post("/wifi/sideways").status_code == 400
+
+
+def test_relay_forwards_only_it_never_derives_summary_or_event():
+    """Health is derived server-side (bms-bridge): a relay on real hardware cannot carry that logic."""
+    r = relay(min_interval_s=100.0)
+    r.connected = True
+    topics = []
+    r.client.publish = lambda topic, *a, **k: topics.append(topic)
+    r._announce = lambda: None
+    r.handle(encode_live(GOOD))                              # carries a fault
+    assert "bms/dev1/meas" in topics
+    assert not [t for t in topics if t.endswith(("/summary", "/event"))]

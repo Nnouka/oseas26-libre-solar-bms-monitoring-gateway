@@ -33,6 +33,8 @@ class Health(BaseHTTPRequestHandler):
             "mqtt_connected": ingestor.connected,
             "mpm_configured": bool(MPM_API_KEY),
             "queued": outbox.depth(),
+            "received": ingestor.stats,
+            "last_rejected": ingestor.last_rejected,
             "last_mpm_status": sender.last_status,
             "last_mpm_success_ago_s": None if sender.last_success is None else round(time.time() - sender.last_success),
         }).encode()

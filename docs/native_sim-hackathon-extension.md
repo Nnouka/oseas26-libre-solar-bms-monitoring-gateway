@@ -29,7 +29,8 @@ Consequence for the hardware transport (README options A1/A2):
 
 Only build what the production system can use without major changes:
 
-- The **gateway is the only MQTT publisher** (including Home Assistant discovery). The simulator plays the BMS and only produces the serial `#mLive` line (`MQTT_ENABLED=false`).
+- The **relay (`services/wifi-sim`) is the only device-side MQTT publisher** and only forwards: `meas`, `info`, `status`. The BMS (the firmware rig, or a real C1) only produces the serial `#mLive` line.
+- **Health is derived server-side**: `summary` and `event` come from `services/bms-bridge` using the shared package `packages/bms-health`. A real relay (ESP32, Cicada) cannot carry that logic, and the bridge behaves the same whichever transport brought the data.
 - The source is one setting on the gateway: `SOURCE=http://...` (simulator), `file:`/`tcp://` (native_sim), `serial:COM5` (real C1). Consumers (Home Assistant, MPM, Prospect) cannot tell which.
 - Every field of the MQTT `meas` message comes from a ThingSet `Meas` item. Anything else (SoH, cycles, imbalance) is derived downstream, never invented by the simulator.
 - Open questions for the case giver (how MPM plugins ingest data, the Cicada UART contract) are listed in tutorial Part 12.
@@ -91,7 +92,7 @@ Open item for the team: the schema has no field for the sentinel/"no data" case 
 
 1. Serve the simulated `#mLive` stream on a TCP port (the gateway already reads `/live` over HTTP and TCP).
 2. Add a ThingSet request/response endpoint (`?Meas`, `=Conf`) for read-only queries.
-3. Extend native_sim with a richer BQ76952 mock behind a build option. This is C/Zephyr work and is separate from the MQTT deliverable. Never describe a mock as validation of real protection hardware.
+3. ~~Extend native_sim with a richer BQ76952 mock~~ Done without touching the firmware: the **firmware rig** (`services/firmware-rig`) writes the battery into the emulated chip through the firmware's own shell (`i2c write`), models the chip's protection trips in Python, and reads the firmware's switch state back from `rBmsState`. Never describe a mock as validation of real protection hardware.
 
 ## References
 
