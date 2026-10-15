@@ -58,7 +58,7 @@ Each service has its own readme next to its code: [`firmware-rig`](services/firm
 
 ### Quick start (firmware rig, Home Assistant)
 
-Requires Docker. The first build compiles the real firmware (several GB download, a few minutes) and is Linux/amd64 only, so on Apple Silicon it runs under emulation.
+Requires Docker. The first build compiles the real firmware (several GB download, a few minutes) and is Linux/amd64 only, so on Apple Silicon it runs under emulation. Note this does not include MPM, to include MPM see [Add MPM below](#add-micropowermanager)
 
 ```bash
 cp .env.example .env
